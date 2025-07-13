@@ -72,6 +72,60 @@ echo "tmpfs /run/shm tmpfs defaults,noexec,nosuid 0 0" >> /etc/fstab
 apt-get install -y snort
 # Configure Snort rules as per your environment
 
+# Enable psad for port scan detection
+apt-get install -y psad debsums lynis
+ufw logging on
+psad --sig-update
+systemctl enable psad
+systemctl start psad
+
+# Verify package integrity
+debsums -s > /var/log/debsums.log || true
+
+# Run a baseline security audit
+lynis audit system --quick > /var/log/lynis.log || true
+
+# Set up Neural Network IDS (optional)
+if [ -x /usr/local/bin/setup_nn_ids.sh ]; then
+    /usr/local/bin/setup_nn_ids.sh
+fi
+
+# Wait for Windows host to become reachable before running host hardening
+HOST_IP="${HOST_IP:-192.168.1.100}"
+MAX_WAIT=300
+WAIT_INTERVAL=10
+TIME_PASSED=0
+echo "Waiting for Windows host $HOST_IP..."
+until ping -c1 "$HOST_IP" >/dev/null 2>&1; do
+    sleep "$WAIT_INTERVAL"
+    TIME_PASSED=$((TIME_PASSED + WAIT_INTERVAL))
+    if [ "$TIME_PASSED" -ge "$MAX_WAIT" ]; then
+        echo "Timeout waiting for $HOST_IP"
+        break
+    fi
+done
+
+if ping -c1 "$HOST_IP" >/dev/null 2>&1 && \
+   [ -x /usr/local/bin/host_hardening_windows.sh ]; then
+    /usr/local/bin/host_hardening_windows.sh
+fi
+
+# Apply additional VM hardening tailored for a Windows host environment
+# Apply additional VM hardening tailored for a Windows host environment
+if [ -x /usr/local/bin/vm_windows_env_hardening.sh ]; then
+    /usr/local/bin/vm_windows_env_hardening.sh
+fi
+
+# Schedule recurring security scans
+if [ -x /usr/local/bin/security_scan_scheduler.sh ]; then
+    /usr/local/bin/security_scan_scheduler.sh
+fi
+
+# Initialize process and service monitoring baseline
+if [ -x /usr/local/bin/process_service_monitor.py ]; then
+    /usr/local/bin/process_service_monitor.py
+fi
+
 # Final Cleanup and Disable First Boot Service
 systemctl disable firstboot.service
 rm /etc/systemd/system/firstboot.service
