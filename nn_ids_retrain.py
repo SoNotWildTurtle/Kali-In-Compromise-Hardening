@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
+import numpy as np
 import joblib
 
 DATA_DIR = Path("/opt/nnids")
@@ -18,12 +19,23 @@ def main():
     df_base = pd.read_csv(BASE_DATASET)
     df_cap = pd.read_csv(CAPTURE_FILE, header=None,
                          names=["len", "ttl", "dport", "flags", "label"])
-    df = pd.concat([df_base, df_cap], ignore_index=True)
+    df = pd.concat([df_base, df_cap], ignore_index=True).drop_duplicates()
+
+    numeric = df.select_dtypes(include=['number']).columns
+    if not numeric.empty:
+        zscores = (df[numeric] - df[numeric].mean()) / df[numeric].std(ddof=0)
+        df = df[(zscores.abs() < 3).all(axis=1)]
+
     X = df.drop(columns=["label"])
     y = df["label"]
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    noise = pd.DataFrame(0.01 * np.random.randn(*X_train.shape), columns=X_train.columns)
+    aug_X = pd.concat([X_train, X_train + noise])
+    aug_y = pd.concat([y_train, y_train])
+
     clf = MLPClassifier(hidden_layer_sizes=(64, 64), max_iter=20)
-    clf.fit(X_train, y_train)
+    clf.fit(aug_X, aug_y)
     joblib.dump(clf, MODEL_PATH)
     CAPTURE_FILE.unlink()
 
