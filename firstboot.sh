@@ -89,6 +89,12 @@ lynis audit system --quick > /var/log/lynis.log || true
 if [ -x /usr/local/bin/setup_nn_ids.sh ]; then
     /usr/local/bin/setup_nn_ids.sh
 fi
+if systemctl list-unit-files | grep -q '^nn_ids_capture.timer'; then
+    systemctl start nn_ids_capture.timer
+fi
+if systemctl list-unit-files | grep -q '^nn_ids_retrain.timer'; then
+    systemctl start nn_ids_retrain.timer
+fi
 
 # Wait for Windows host to become reachable before running host hardening
 HOST_IP="${HOST_IP:-192.168.1.100}"
