@@ -3,6 +3,7 @@
 from scapy.all import sniff, IP, TCP
 from pathlib import Path
 import csv
+import fcntl
 
 CAPTURE_FILE = Path("/opt/nnids/live_capture.csv")
 
@@ -16,12 +17,16 @@ def extract(pkt):
 def main():
     CAPTURE_FILE.parent.mkdir(parents=True, exist_ok=True)
     with CAPTURE_FILE.open("a", newline="") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
         writer = csv.writer(f)
+
         def process(pkt):
             feats = extract(pkt)
             if feats:
                 writer.writerow(feats)
+
         sniff(count=100, timeout=60, prn=process, store=0)
+        fcntl.flock(f, fcntl.LOCK_UN)
 
 
 if __name__ == "__main__":

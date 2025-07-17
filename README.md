@@ -62,7 +62,7 @@ Key objectives:
 - **Baseline Auditing**: First boot verifies package integrity with `debsums` and performs a quick Lynis scan.
 - **Scheduled Security Scans**: Daily `lynis` and `rkhunter` checks are configured via cron.
 - **MAC Address Randomization**: The primary network interface receives a new MAC on each boot.
-- **Neural Network IDS**: Scripts fetch GA Tech malware datasets, train a neural network model, capture live traffic for additional learning, and periodically retrain the model.
+- **Neural Network IDS**: Scripts fetch GA Tech malware datasets, train a neural network model, capture live traffic for additional learning, and periodically retrain the model. Training runs in parallel with packet capture and live analysis using systemd services.
 - **IDS Hardening Defenses**: Dataset integrity checks, outlier removal, noise augmentation, and detection of repeated evasion attempts guard against poisoning and desensitization attacks.
 - **Process and Service Monitoring**: A systemd timer runs a Python script that records a baseline of running processes and services and alerts when new or suspicious entries appear.
 
@@ -78,7 +78,7 @@ Scripts are organized as modules that work together to produce the hardened imag
 - `vm_windows_env_hardening.sh` – Applies additional VM protections when a Windows host is detected.
 - `security_scan_scheduler.sh` – Sets up recurring Lynis and rkhunter scans.
 - `process_service_monitor.py` – Monitors running processes and services via a systemd timer.
-- `setup_nn_ids.sh`, `nn_ids_setup.py`, `nn_ids_service.py`, `nn_ids_capture.py`, and `nn_ids_retrain.py` – Download datasets, train the neural network IDS, capture live traffic, and periodically retrain the model.
+- `setup_nn_ids.sh`, `setup_nn_ids.service`, `nn_ids_setup.py`, `nn_ids_service.py`, `nn_ids_capture.py`, and `nn_ids_retrain.py` – Download datasets, train the neural network IDS, capture live traffic, and periodically retrain the model in parallel.
 - `mac_randomizer.sh` and `mac_randomizer.service` – Randomize the MAC address at boot.
 - `build_custom_iso.sh` – Helper to package the above into a custom ISO.
 

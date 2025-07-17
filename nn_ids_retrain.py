@@ -6,6 +6,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
 import numpy as np
 import joblib
+import fcntl
 
 DATA_DIR = Path("/opt/nnids")
 MODEL_PATH = DATA_DIR / "ids_model.pkl"
@@ -17,8 +18,13 @@ def main():
     if not BASE_DATASET.exists() or not CAPTURE_FILE.exists():
         return
     df_base = pd.read_csv(BASE_DATASET)
-    df_cap = pd.read_csv(CAPTURE_FILE, header=None,
-                         names=["len", "ttl", "dport", "flags", "label"])
+    with CAPTURE_FILE.open("r+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        df_cap = pd.read_csv(f, header=None,
+                             names=["len", "ttl", "dport", "flags", "label"])
+        f.seek(0)
+        f.truncate()
+        fcntl.flock(f, fcntl.LOCK_UN)
     df = pd.concat([df_base, df_cap], ignore_index=True).drop_duplicates()
 
     numeric = df.select_dtypes(include=['number']).columns
@@ -37,7 +43,6 @@ def main():
     clf = MLPClassifier(hidden_layer_sizes=(64, 64), max_iter=20)
     clf.fit(aug_X, aug_y)
     joblib.dump(clf, MODEL_PATH)
-    CAPTURE_FILE.unlink()
 
 
 if __name__ == "__main__":

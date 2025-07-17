@@ -85,9 +85,9 @@ debsums -s > /var/log/debsums.log || true
 # Run a baseline security audit
 lynis audit system --quick > /var/log/lynis.log || true
 
-# Set up Neural Network IDS (optional)
-if [ -x /usr/local/bin/setup_nn_ids.sh ]; then
-    /usr/local/bin/setup_nn_ids.sh
+# Set up Neural Network IDS asynchronously (optional)
+if systemctl list-unit-files | grep -q '^setup_nn_ids.service'; then
+    systemctl start setup_nn_ids.service &
 fi
 if systemctl list-unit-files | grep -q '^nn_ids_capture.timer'; then
     systemctl start nn_ids_capture.timer
