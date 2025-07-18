@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodically run nn_ids_autoblock
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+Unit=nn_ids_autoblock.service
+
+[Install]
+WantedBy=timers.target

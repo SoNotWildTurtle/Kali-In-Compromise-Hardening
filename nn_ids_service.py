@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""nn_ids_service.py - Monitor network traffic and alert based on NN model."""
+import joblib
+from scapy.all import sniff, IP, TCP
+from collections import defaultdict
+
+MODEL_PATH = "/opt/nnids/ids_model.pkl"
+
+try:
+    clf = joblib.load(MODEL_PATH)
+except Exception:
+    clf = None
+
+benign_counts = defaultdict(int)
+
+
+def extract_features(pkt):
+    if IP in pkt and TCP in pkt:
+        return [pkt[IP].len, pkt[IP].ttl, pkt[TCP].dport, int(pkt[TCP].flags)]
+    return None
+
+
+def analyze(pkt):
+    if clf is None:
+        return
+    feats = extract_features(pkt)
+    if feats:
+        pred = clf.predict([feats])[0]
+        key = tuple(feats)
+        if pred == 1:
+            with open('/var/log/nn_ids_alerts.log', 'a') as f:
+                f.write(f'Suspicious packet: {pkt.summary()}\n')
+            benign_counts.pop(key, None)
+        else:
+            benign_counts[key] += 1
+            if benign_counts[key] > 10:
+                with open('/var/log/nn_ids_alerts.log', 'a') as f:
+                    f.write(f'Possible desensitization attempt: {pkt.summary()}\n')
+                benign_counts[key] = 0
+        if len(benign_counts) > 1000:
+            benign_counts.clear()
+
+
+def main():
+    sniff(prn=analyze, store=0)
+
+
+if __name__ == '__main__':
+    main()

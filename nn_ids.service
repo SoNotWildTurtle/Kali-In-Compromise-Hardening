@@ -1,0 +1,10 @@
+[Unit]
+Description=Neural Network IDS
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/bin/nn_ids_service.py
+
+[Install]
+WantedBy=multi-user.target
