@@ -6,7 +6,9 @@
 ## Table of Contents
 
 - [Project Overview](#project-overview)
+- [Project Goals](#project-goals)
 - [Features](#features)
+- [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
 - [Installation and Setup](#installation-and-setup)
   - [1. Creating the Preseed Configuration File](#1-creating-the-preseed-configuration-file)
@@ -22,6 +24,7 @@
 - [Best Practices](#best-practices)
 - [Additional Resources](#additional-resources)
 - [License](#license)
+- [Developer Notes](#developer-notes)
 
 ---
 
@@ -31,14 +34,73 @@ This project provides a comprehensive solution for deploying an **extremely secu
 
 ---
 
+## Project Goals
+
+The overarching goal is **creating a hardened Kali Linux press containing a self-learning IDS**. This repository evolves toward that aim through modular scripts and continuous automation.
+
+Key objectives:
+
+- Harden the Kali installation using a preseed file and first boot services.
+- Train and deploy a neural-network-based IDS using legal datasets.
+- Provide host hardening tools for Windows environments.
+- Maintain clear documentation and developer notes to encourage collaboration.
+
+---
+
 ## Features
 
 - **Automated Kali Linux Installation**: Uses a preseed file to automate the installation process with extensive hardening measures.
 - **Custom Security Configurations**: Implements best practices and advanced security settings based on CIS Benchmarks and academic research.
 - **First Boot Hardening**: Executes additional hardening commands during the first startup using systemd services.
 - **Automated Windows 11 Host Hardening**: Utilizes PowerShell scripts to remotely harden a Windows 11 host from the Kali VM.
+- **Automated Windows Remote Setup**: The Windows hardening script installs and enables OpenSSH and PowerShell Remoting, enables transcript logging, and schedules daily updates.
+- **Windows Host-Aware VM Hardening**: Additional firewall and virtualization tweaks protect the Kali VM when running on a Windows host.
+- **AI Agent Integration**: Optional script demonstrates how to request code improvement suggestions from a generative AI service.
 - **Comprehensive Documentation**: Detailed instructions to guide users through setup, customization, and maintenance.
 - **Secure Remote Management**: Configures secure communication channels between Kali VM and Windows host using SSH or PowerShell Remoting.
+- **Port Scan Detection with psad**: Monitors iptables logs for potential network attacks.
+- **Baseline Auditing**: First boot verifies package integrity with `debsums` and performs a quick Lynis scan.
+- **Scheduled Security Scans**: Daily `lynis` and `rkhunter` checks are configured via cron.
+- **MAC Address Randomization**: The primary network interface receives a new MAC on each boot.
+- **Neural Network IDS**: Scripts fetch GA Tech malware datasets, train a neural network model, capture live traffic for additional learning, and periodically retrain the model. Training runs in parallel with packet capture and live analysis using systemd services.
+- **Training Metrics Logging**: Accuracy and F1 score are recorded after each training or retraining run.
+- **IDS Hardening Defenses**: Dataset integrity checks, outlier removal, noise augmentation, and detection of repeated evasion attempts guard against poisoning and desensitization attacks.
+- **Process and Service Monitoring**: A systemd timer runs a Python script that records a baseline of running processes and services and alerts when new or suspicious entries appear.
+- **IDS Health Check and Log Rotation**: Additional timer ensures the IDS service is running and rotates IDS logs to prevent disk bloat.
+- **IDS Resource Usage Monitoring**: Another timer verifies the IDS process stays within CPU and memory limits, restarting it if needed.
+- **Training Log Rotation**: Model training metrics are logged and rotated to keep logs manageable.
+- **Packet Sanitization**: Captured datasets are sanitized before training to remove malformed or out-of-range values.
+- **Smart Port Monitoring**: A timer-driven script records listening ports and logs unexpected changes.
+- **Automatic IP Blocking**: Repeated IDS alerts trigger a script that blocks offending IP addresses via iptables.
+- **Probability-Based Alerts**: IDS alerts include a confidence score so you can tune responses to low or high certainty events.
+- **Auto-Unblocking**: Blocked IPs are automatically removed after 24 hours to avoid permanent bans.
+- **IDS Alert Reporting**: A timer summarizes new IDS alerts each hour and logs counts of offending IPs.
+- **Threat Feed IP Blocking**: Daily job fetches community blocklists and automatically drops traffic from known malicious IPs.
+
+---
+
+## Project Structure
+
+Scripts are organized as modules that work together to produce the hardened image:
+
+- `kali-preseed.cfg` – Automates the base installation and seeds security packages.
+- `firstboot.sh` – Runs once after installation to apply further hardening and invoke other modules.
+- `host_hardening_windows.sh` and `windows_hardening.ps1` – Harden a Windows host from the VM.
+- `vm_windows_env_hardening.sh` – Applies additional VM protections when a Windows host is detected.
+- `security_scan_scheduler.sh` – Sets up recurring Lynis and rkhunter scans.
+- `process_service_monitor.py` – Monitors running processes and services via a systemd timer.
+- `port_socket_monitor.py` – Detects new listening ports and logs suspicious ones.
+- `nn_ids_healthcheck.py` and timer/service units – Ensure the IDS is active and rotate logs.
+- `setup_nn_ids.sh`, `setup_nn_ids.service`, `nn_ids_setup.py`, `nn_ids_service.py`, `nn_ids_capture.py`, and `nn_ids_retrain.py` – Download datasets, train the neural network IDS, capture live traffic, and periodically retrain the model in parallel.
+- `nn_ids_autoblock.py` and timer/service units – Block IPs automatically when repeated alerts are seen.
+- `nn_ids_report.py` and timer/service units – Summarize alerts and log top offending IPs.
+- `threat_feed_blocklist.py` and timer/service units – Fetch threat feeds and block listed IP addresses.
+- `nn_ids_resource_monitor.py` and timer/service units – Restart the IDS if it uses too much CPU or memory.
+- `packet_sanitizer.py` – Utility for cleansing datasets before model training.
+- `mac_randomizer.sh` and `mac_randomizer.service` – Randomize the MAC address at boot.
+- `build_custom_iso.sh` – Helper to package the above into a custom ISO.
+
+These modules are referenced in the preseed late commands and copied onto the ISO so the system is secured immediately after installation.
 
 ---
 
@@ -163,12 +225,19 @@ The preseed file automates the Kali Linux installation process with extensive se
        wireshark \
        ethtool \
        traceroute \
-       dnsutils
+       dnsutils \
+       debsums \
+       apparmor-utils \
+       apparmor-profiles-extra \
+       secure-delete \
+       chrony \
+       psad
    d-i pkgsel/upgrade select full-upgrade
 
    ### Boot Loader Installation
    d-i grub-installer/only_debian boolean true
    d-i grub-installer/with_other_os boolean false
+   d-i grub-installer/password-crypted password GRUB_PASSWORD_HASH
 
    ### Preseed Commands for Post-Installation Hardening
    d-i preseed/late_command string \
@@ -191,7 +260,7 @@ The preseed file automates the Kali Linux installation process with extensive se
        # Enable and configure Fail2Ban \
        in-target systemctl enable fail2ban; \
        in-target systemctl start fail2ban; \
-       cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local; \
+       in-target cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local; \
        in-target sed -i 's/^bantime = .*/bantime = 3600/' /etc/fail2ban/jail.local; \
        in-target sed -i 's/^maxretry = .*/maxretry = 5/' /etc/fail2ban/jail.local; \
        in-target systemctl restart fail2ban; \
@@ -199,7 +268,7 @@ The preseed file automates the Kali Linux installation process with extensive se
        # Enable and configure Auditd \
        in-target systemctl enable auditd; \
        in-target systemctl start auditd; \
-       cp /etc/audit/audit.rules /etc/audit/audit.rules.bak; \
+       in-target cp /etc/audit/audit.rules /etc/audit/audit.rules.bak; \
        cat <<EOF > /target/etc/audit/audit.rules
        -w /etc/passwd -p wa -k passwd_changes
        -w /etc/shadow -p wa -k shadow_changes
@@ -240,6 +309,10 @@ The preseed file automates the Kali Linux installation process with extensive se
        # Restrict Permissions \
        chmod 700 /root; \
        chmod 700 /home/kaliuser; \
+       echo "Authorized access only. Activity may be monitored." > /target/etc/issue; \
+       cp /target/etc/issue /target/etc/issue.net; \
+       in-target systemctl mask ctrl-alt-del.target; \
+       echo "blacklist usb-storage" > /target/etc/modprobe.d/blacklist-usb.conf; \
        \
        # Enforce Password Policies \
        chage --maxdays 90 kaliuser; \
@@ -267,7 +340,7 @@ The preseed file automates the Kali Linux installation process with extensive se
        rkhunter --update; \
        rkhunter --propupd; \
        aideinit; \
-       cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db; \
+       in-target cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db; \
        \
        # Configure AIDE for Integrity Checking \
        echo "/bin" >> /etc/aide/aide.conf; \
@@ -277,110 +350,18 @@ The preseed file automates the Kali Linux installation process with extensive se
        echo "/etc" >> /etc/aide/aide.conf; \
        echo "/var/log" >> /etc/aide/aide.conf; \
        \
-       # Set up Systemd Service for First Boot Hardening \
-       echo "[Unit]" > /target/etc/systemd/system/firstboot.service; \
-       echo "Description=First Boot Hardening Script" >> /target/etc/systemd/system/firstboot.service; \
-       echo "After=network.target" >> /target/etc/systemd/system/firstboot.service; \
-       echo "" >> /target/etc/systemd/system/firstboot.service; \
-       echo "[Service]" >> /target/etc/systemd/system/firstboot.service; \
-       echo "Type=oneshot" >> /target/etc/systemd/system/firstboot.service; \
-       echo "ExecStart=/usr/local/bin/firstboot.sh" >> /target/etc/systemd/system/firstboot.service; \
-       echo "RemainAfterExit=yes" >> /target/etc/systemd/system/firstboot.service; \
-       echo "" >> /target/etc/systemd/system/firstboot.service; \
-       echo "[Install]" >> /target/etc/systemd/system/firstboot.service; \
-       echo "WantedBy=multi-user.target" >> /target/etc/systemd/system/firstboot.service; \
-       \
-       # Create the First Boot Script \
-       echo "#!/bin/bash" > /target/usr/local/bin/firstboot.sh; \
-       echo "# First Boot Hardening Script" >> /target/usr/local/bin/firstboot.sh; \
-       echo "" >> /target/usr/local/bin/firstboot.sh; \
-       echo "# Update and Upgrade" >> /target/usr/local/bin/firstboot.sh; \
-       echo "apt-get update && apt-get upgrade -y" >> /target/usr/local/bin/firstboot.sh; \
-       echo "" >> /target/usr/local/bin/firstboot.sh; \
-       echo "# Configure Docker Security" >> /target/usr/local/bin/firstboot.sh; \
-       echo "usermod -aG docker kaliuser" >> /target/usr/local/bin/firstboot.sh; \
-       echo "systemctl enable docker" >> /target/usr/local/bin/firstboot.sh; \
-       echo "systemctl start docker" >> /target/usr/local/bin/firstboot.sh; \
-       echo "" >> /target/usr/local/bin/firstboot.sh; \
-       echo "# Implement Docker Daemon Security" >> /target/usr/local/bin/firstboot.sh; \
-       echo "mkdir -p /etc/docker" >> /target/usr/local/bin/firstboot.sh; \
-       echo "cat <<EOF > /etc/docker/daemon.json" >> /target/usr/local/bin/firstboot.sh; \
-       echo "{" >> /target/usr/local/bin/firstboot.sh; \
-       echo "    \"icc\": false," >> /target/usr/local/bin/firstboot.sh; \
-       echo "    \"userns-remap\": \"default\"," >> /target/usr/local/bin/firstboot.sh; \
-       echo "    \"no-new-privileges\": true," >> /target/usr/local/bin/firstboot.sh; \
-       echo "    \"log-driver\": \"json-file\"," >> /target/usr/local/bin/firstboot.sh; \
-       echo "    \"log-opts\": {" >> /target/usr/local/bin/firstboot.sh; \
-       echo "        \"max-size\": \"10m\"," >> /target/usr/local/bin/firstboot.sh; \
-       echo "        \"max-file\": \"3\"" >> /target/usr/local/bin/firstboot.sh; \
-       echo "    }" >> /target/usr/local/bin/firstboot.sh; \
-       echo "}" >> /target/usr/local/bin/firstboot.sh; \
-       echo "EOF" >> /target/usr/local/bin/firstboot.sh; \
-       echo "systemctl restart docker" >> /target/usr/local/bin/firstboot.sh; \
-       echo "" >> /target/usr/local/bin/firstboot.sh; \
-       echo "# Enable Docker Content Trust" >> /target/usr/local/bin/firstboot.sh; \
-       echo "echo \"export DOCKER_CONTENT_TRUST=1\" >> /etc/profile.d/docker.sh" >> /target/usr/local/bin/firstboot.sh; \
-       echo "" >> /target/usr/local/bin/firstboot.sh; \
-       echo "# Configure AIDE for File Integrity Monitoring" >> /target/usr/local/bin/firstboot.sh; \
-       echo "aide --init" >> /target/usr/local/bin/firstboot.sh; \
-       echo "cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db" >> /target/usr/local/bin/firstboot.sh; \
-       echo "" >> /target/usr/local/bin/firstboot.sh; \
-       echo "# Schedule Regular AIDE Checks" >> /target/usr/local/bin/firstboot.sh; \
-       echo "echo \"0 3 * * * root /usr/bin/aide --check\" >> /etc/crontab" >> /target/usr/local/bin/firstboot.sh; \
-       echo "" >> /target/usr/local/bin/firstboot.sh; \
-       echo "# Enhance Logging with Logrotate for Security Logs" >> /target/usr/local/bin/firstboot.sh; \
-       echo "cat <<EOF > /etc/logrotate.d/security" >> /target/usr/local/bin/firstboot.sh; \
-       echo "/var/log/audit/audit.log {" >> /target/usr/local/bin/firstboot.sh; \
-       echo "    rotate 7" >> /target/usr/local/bin/firstboot.sh; \
-       echo "    daily" >> /target/usr/local/bin/firstboot.sh; \
-       echo "    missingok" >> /target/usr/local/bin/firstboot.sh; \
-       echo "    notifempty" >> /target/usr/local/bin/firstboot.sh; \
-       echo "    compress" >> /target/usr/local/bin/firstboot.sh; \
-       echo "    delaycompress" >> /target/usr/local/bin/firstboot.sh; \
-       echo "    postrotate" >> /target/usr/local/bin/firstboot.sh; \
-       echo "        /sbin/service auditd reload > /dev/null" >> /target/usr/local/bin/firstboot.sh; \
-       echo "    endscript" >> /target/usr/local/bin/firstboot.sh; \
-       echo "}" >> /target/usr/local/bin/firstboot.sh; \
-       echo "EOF" >> /target/usr/local/bin/firstboot.sh; \
-       echo "" >> /target/usr/local/bin/firstboot.sh; \
-       echo "# Harden Network Configuration with Additional Sysctl Settings" >> /target/usr/local/bin/firstboot.sh; \
-       echo "cat <<EOF >> /etc/sysctl.conf" >> /target/usr/local/bin/firstboot.sh; \
-       echo "# Additional Network Hardening" >> /target/usr/local/bin/firstboot.sh; \
-       echo "net.ipv4.tcp_tw_reuse=1" >> /target/usr/local/bin/firstboot.sh; \
-       echo "net.ipv4.tcp_fin_timeout=15" >> /target/usr/local/bin/firstboot.sh; \
-       echo "net.ipv4.ip_local_port_range=1024 65535" >> /target/usr/local/bin/firstboot.sh; \
-       echo "net.core.somaxconn=1024" >> /target/usr/local/bin/firstboot.sh; \
-       echo "EOF" >> /target/usr/local/bin/firstboot.sh; \
-       echo "sysctl -p" >> /target/usr/local/bin/firstboot.sh; \
-       echo "" >> /target/usr/local/bin/firstboot.sh; \
-       echo "# Disable IPv6 if Not Needed" >> /target/usr/local/bin/firstboot.sh; \
-       echo "sysctl -w net.ipv6.conf.all.disable_ipv6=1" >> /target/usr/local/bin/firstboot.sh; \
-       echo "sysctl -w net.ipv6.conf.default.disable_ipv6=1" >> /target/usr/local/bin/firstboot.sh; \
-       echo "" >> /target/usr/local/bin/firstboot.sh; \
-       echo "# Secure Shared Memory" >> /target/usr/local/bin/firstboot.sh; \
-       echo "echo \"tmpfs /run/shm tmpfs defaults,noexec,nosuid 0 0\" >> /etc/fstab" >> /target/usr/local/bin/firstboot.sh; \
-       echo "" >> /target/usr/local/bin/firstboot.sh; \
-       echo "# Install and Configure Intrusion Detection System (Snort)" >> /target/usr/local/bin/firstboot.sh; \
-       echo "apt-get install -y snort" >> /target/usr/local/bin/firstboot.sh; \
-       echo "# Configure Snort rules as per your environment" >> /target/usr/local/bin/firstboot.sh; \
-       echo "" >> /target/usr/local/bin/firstboot.sh; \
-       echo "# Final Cleanup and Disable First Boot Service" >> /target/usr/local/bin/firstboot.sh; \
-       echo "systemctl disable firstboot.service" >> /target/usr/local/bin/firstboot.sh; \
-       echo "rm /etc/systemd/system/firstboot.service" >> /target/usr/local/bin/firstboot.sh; \
-       echo "rm /usr/local/bin/firstboot.sh" >> /target/usr/local/bin/firstboot.sh; \
-       echo "" >> /target/usr/local/bin/firstboot.sh; \
-       echo "echo \"First boot hardening completed successfully.\"" >> /target/usr/local/bin/firstboot.sh; \
-       \
-       # Make the First Boot Script Executable \
-       chmod +x /target/usr/local/bin/firstboot.sh; \
-       \
-       # Enable the First Boot Service \
-       systemctl enable firstboot.service; \
-       \
-       # Remove Temporary Files \
-       rm /target/preseed/kali-preseed.cfg; \
-       \
-       # Final Cleanup \
+        # Copy first boot and host hardening scripts \
+        in-target cp /cdrom/install/firstboot.sh /usr/local/bin/firstboot.sh; \
+        in-target cp /cdrom/install/host_hardening_windows.sh /usr/local/bin/host_hardening_windows.sh; \
+        in-target cp /cdrom/install/windows_hardening.ps1 /usr/local/bin/windows_hardening.ps1; \
+        in-target cp /cdrom/install/firstboot.service /etc/systemd/system/firstboot.service; \
+        in-target chmod +x /usr/local/bin/firstboot.sh /usr/local/bin/host_hardening_windows.sh; \
+        in-target systemctl enable firstboot.service; \
+        \
+        # Remove Temporary Files \
+        rm /target/preseed/kali-preseed.cfg; \
+        \
+        # Final Cleanup \
        apt-get clean
    ```
 
@@ -389,6 +370,9 @@ The preseed file automates the Kali Linux installation process with extensive se
    - `YOUR_SECURE_ROOT_PASSWORD`: Replace with a strong, unique password for the root account.
    - `USER_SECURE_PASSWORD`: Replace with a strong, unique password for the non-root user (`kaliuser`).
    - `DISK_ENCRYPTION_PASSPHRASE`: Replace with a secure passphrase for disk encryption.
+   - `GRUB_PASSWORD_HASH`: Hash of the GRUB password generated with `grub-mkpasswd-pbkdf2`.
+   - `HOST_IP`: IP address of the Windows host targeted by the post-boot hardening script.
+   - `OPENAI_API_KEY`: Token for the optional AI agent helper script.
 
 4. **Secure the Preseed File**:
 
@@ -468,6 +452,12 @@ The custom ISO incorporates the preseed file to automate installation and harden
 7. **Verify the ISO**:
 
    Test the ISO in a virtual machine environment (e.g., VirtualBox, VMware) before deploying it in production.
+Alternatively, run the provided `build_custom_iso.sh` script to automate these steps:
+
+```bash
+./build_custom_iso.sh kali-linux-latest-amd64.iso kali-custom-auto.iso
+```
+
 
 ---
 
@@ -582,61 +572,21 @@ With remote management configured, use scripts to automate the hardening of the 
 
 #### Develop the PowerShell Hardening Script
 
-1. **Create `windows_hardening.ps1`**:
+1. **Review `windows_hardening.ps1`**:
+
+   The repository now includes a PowerShell hardening script (`windows_hardening.ps1`).
+   Review the contents and adjust the commands as needed for your environment.
 
    ```powershell
    # windows_hardening.ps1
 
-   # Enable Windows Firewall for all profiles
-   Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
+   # Installs OpenSSH and enables PowerShell Remoting
+   Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+   Start-Service sshd; Set-Service sshd -StartupType Automatic
+   Enable-PSRemoting -Force
 
-   # Configure Firewall Rules: Allow SSH and RDP if necessary
-   New-NetFirewallRule -DisplayName "Allow SSH" -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow
-   # Uncomment the following line if RDP is needed
-   # New-NetFirewallRule -DisplayName "Allow RDP" -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow
-
-   # Disable SMBv1, v2, and v3 if not needed
-   Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force
-   Set-SmbClientConfiguration -EnableSMB1Protocol $false -Force
-
-   # Enable Windows Defender Antivirus
-   Set-MpPreference -DisableRealtimeMonitoring $false
-   Start-MpScan -ScanType QuickScan
-
-   # Enable BitLocker Drive Encryption (Requires TPM or appropriate configuration)
-   Enable-BitLocker -MountPoint "C:" -EncryptionMethod Aes256 -UsedSpaceOnlyEncryption
-
-   # Enforce Password Policies
-   secedit /export /cfg C:\password_policy.cfg
-   $config = Get-Content C:\password_policy.cfg
-   $config = $config -replace "MinimumPasswordLength = \d+", "MinimumPasswordLength = 12"
-   $config = $config -replace "PasswordComplexity = \d+", "PasswordComplexity = 1"
-   Set-Content C:\password_policy.cfg $config
-   secedit /configure /db C:\Windows\Security\Database\secedit.sdb /cfg C:\password_policy.cfg /areas SECURITYPOLICY
-   Remove-Item C:\password_policy.cfg
-
-   # Disable Remote Assistance
-   Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Remote Assistance" -Name "fAllowToGetHelp" -Value 0
-
-   # Disable Unnecessary Services
-   Get-Service -Name "Fax", "XblGameSave", "WMPNetworkSvc" | Set-Service -StartupType Disabled
-
-   # Enable Audit Logging
-   auditpol /set /category:"Logon/Logoff" /success:enable /failure:enable
-   auditpol /set /category:"Object Access" /success:enable /failure:enable
-   auditpol /set /category:"Policy Change" /success:enable /failure:enable
-
-   # Remove Unnecessary Features
-   Disable-WindowsOptionalFeature -Online -FeatureName "TelnetClient" -NoRestart
-   Disable-WindowsOptionalFeature -Online -FeatureName "TFTP" -NoRestart
-
-   # Update System
-   Install-PackageProvider -Name NuGet -Force
-   Install-Module -Name PSWindowsUpdate -Force
-   Import-Module PSWindowsUpdate
-   Get-WindowsUpdate -AcceptAll -Install -AutoReboot
-   ```
-
+   # Applies firewall and Defender settings, enforces password policies, enables BitLocker, activates PowerShell transcription logging, and schedules daily updates using PSWindowsUpdate.
+```
    **Note**: Some commands, like enabling BitLocker, require TPM and may need user interaction or specific configurations. Ensure your Windows 11 host meets the prerequisites before enabling such features.
 
 2. **Transfer the Script to Kali VM**:
@@ -645,71 +595,17 @@ With remote management configured, use scripts to automate the hardening of the 
    scp windows_hardening.ps1 kaliuser@kali-vm:/home/kaliuser/
    ```
 
-#### Develop the Kali Script to Execute the Hardening
+1. **Review `host_hardening_windows.sh`**:
 
-1. **Create `host_hardening_windows.sh`**:
+   This helper waits until the Windows host is reachable via SSH, copies `windows_hardening.ps1`, executes it remotely, and then removes the remote copy. Adjust `HOST_IP`, `SSH_USER`, and `SSH_KEY` as required.
 
-   ```bash
-   #!/bin/bash
+```bash
+./host_hardening_windows.sh
+```
 
-   # host_hardening_windows.sh
-   # Script to diagnose and harden a Windows 11 host from Kali VM
+2. **Review `vm_windows_env_hardening.sh`**:
 
-   # Variables - Configure these according to your environment
-   HOST_IP="192.168.1.100"                    # Replace with your Windows host's IP address
-   SSH_USER="admin"                            # Replace with the SSH username on Windows with sudo privileges
-   SSH_KEY="/home/kaliuser/.ssh/id_rsa_kali_windows"  # Path to SSH private key for host access
-   PS_SCRIPT_LOCAL="windows_hardening.ps1"    # Local path to the PowerShell script
-   PS_SCRIPT_REMOTE="C:\\Users\\admin\\windows_hardening.ps1"  # Remote path on Windows
-
-   # Ensure SSH key exists
-   if [ ! -f "$SSH_KEY" ]; then
-       echo "SSH key not found at $SSH_KEY. Please generate and configure it."
-       exit 1
-   fi
-
-   # Ensure PowerShell script exists
-   if [ ! -f "$PS_SCRIPT_LOCAL" ]; then
-       echo "PowerShell script not found at $PS_SCRIPT_LOCAL."
-       exit 1
-   fi
-
-   # Copy the PowerShell script to the Windows host
-   echo "Transferring PowerShell script to Windows host..."
-   scp -i "$SSH_KEY" "$PS_SCRIPT_LOCAL" "$SSH_USER@$HOST_IP:$PS_SCRIPT_REMOTE"
-   if [ $? -ne 0 ]; then
-       echo "Failed to transfer PowerShell script."
-       exit 1
-   fi
-
-   # Execute the PowerShell script on the Windows host
-   echo "Executing PowerShell hardening script on Windows host..."
-   ssh -i "$SSH_KEY" "$SSH_USER@$HOST_IP" "powershell -ExecutionPolicy Bypass -File '$PS_SCRIPT_REMOTE'"
-
-   if [ $? -eq 0 ]; then
-       echo "Windows host hardening script executed successfully."
-   else
-       echo "Failed to execute Windows host hardening script."
-       exit 1
-   fi
-
-   # Optionally, remove the script from the host after execution
-   ssh -i "$SSH_KEY" "$SSH_USER@$HOST_IP" "Remove-Item '$PS_SCRIPT_REMOTE'"
-
-   echo "Host hardening process completed."
-   ```
-
-2. **Make the Script Executable**:
-
-   ```bash
-   chmod +x host_hardening_windows.sh
-   ```
-
-3. **Execute the Script**:
-
-   ```bash
-   sudo ./host_hardening_windows.sh
-   ```
+   After the host is secured, this script tightens the VM by allowing SSH only from the host IP and disabling VirtualBox clipboard sharing.
 
 ---
 
@@ -729,6 +625,11 @@ With remote management configured, use scripts to automate the hardening of the 
 3. **Boot the VM**:
 
    - Start the VM; it should automatically install Kali Linux with the predefined security configurations.
+    - After the first boot, the system waits for the Windows host defined by `HOST_IP` and then runs `host_hardening_windows.sh` automatically.
+    - The first boot also starts **psad** for port-scan detection, verifies packages with **debsums**, records a quick **Lynis** audit report, and schedules daily security scans.
+    - When running on a Windows host, the VM automatically applies extra firewall rules and disables clipboard sharing for improved isolation.
+    - The network interface MAC address is randomized at each boot for privacy.
+    - Optional neural network IDS setup downloads public malware datasets and trains a model if internet access is available.
 
 4. **Initial Login**:
 
@@ -768,6 +669,8 @@ With remote management configured, use scripts to automate the hardening of the 
 - **Add or Remove Packages**: Customize the list of packages in the preseed file to include or exclude tools as per your security policies.
 - **Extend Hardening Scripts**: Enhance the `firstboot.sh` and `windows_hardening.ps1` scripts with additional hardening commands tailored to your needs.
 - **Integrate Monitoring Tools**: Incorporate additional monitoring and intrusion detection tools for enhanced security oversight.
+- **Tune Scheduled Scans**: Adjust `/etc/cron.d/security-scans` if you need different frequencies for the daily `lynis` and `rkhunter` jobs.
+- **Modify MAC Randomization**: Edit `/usr/local/bin/mac_randomizer.sh` to target the correct interface or adjust the service schedule.
 
 ---
 
@@ -805,6 +708,19 @@ With remote management configured, use scripts to automate the hardening of the 
 
 ---
 
+## AI-Assisted Improvements
+
+The script `ai_agent_commands.sh` is an optional helper that can send a prompt to a generative AI service, requesting suggestions for further hardening. Set `OPENAI_API_KEY` in your environment and provide a JSON payload describing your code or question:
+
+```bash
+echo '{"model":"gpt-4","messages":[{"role":"user","content":"Review my script for security issues."}]}' > prompt.json
+./ai_agent_commands.sh prompt.json
+```
+
+Responses can guide future enhancements or identify potential weaknesses.
+
+---
+
 ## Additional Resources
 
 - [Kali Linux Documentation](https://www.kali.org/docs/)
@@ -821,6 +737,16 @@ With remote management configured, use scripts to automate the hardening of the 
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+---
+
+## Developer Notes
+
+See `DEV_NOTES.md` for planning details and contributor guidelines. Key points:
+
+- Keep scripts modular and well-commented.
+- Run the provided shell and Python syntax checks before committing.
+- Update the Project Structure section when adding new modules.
 
 ---
 
