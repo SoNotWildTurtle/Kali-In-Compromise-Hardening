@@ -35,6 +35,10 @@ NN_RET_TIMER="nn_ids_retrain.timer"
 PROC_MON="process_service_monitor.py"
 PROC_SVC="process_monitor.service"
 PROC_TIMER="process_monitor.timer"
+NN_HEALTH="nn_ids_healthcheck.py"
+NN_HEALTH_SVC="nn_ids_healthcheck.service"
+NN_HEALTH_TIMER="nn_ids_healthcheck.timer"
+NN_LOGROTATE="nn_ids_logrotate"
 
 # Check dependencies
 for cmd in bsdtar mkisofs isohybrid; do
@@ -83,6 +87,10 @@ cp "$NN_RET_TIMER" "$INSTALL_DIR/"
 cp "$PROC_MON" "$INSTALL_DIR/"
 cp "$PROC_SVC" "$INSTALL_DIR/"
 cp "$PROC_TIMER" "$INSTALL_DIR/"
+cp "$NN_HEALTH" "$INSTALL_DIR/"
+cp "$NN_HEALTH_SVC" "$INSTALL_DIR/"
+cp "$NN_HEALTH_TIMER" "$INSTALL_DIR/"
+cp "$NN_LOGROTATE" "$INSTALL_DIR/"
 cat <<SERVICE > "$INSTALL_DIR/firstboot.service"
 [Unit]
 Description=First boot hardening

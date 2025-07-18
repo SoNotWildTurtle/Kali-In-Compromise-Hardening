@@ -95,6 +95,9 @@ fi
 if systemctl list-unit-files | grep -q '^nn_ids_retrain.timer'; then
     systemctl start nn_ids_retrain.timer
 fi
+if systemctl list-unit-files | grep -q '^nn_ids_healthcheck.timer'; then
+    systemctl start nn_ids_healthcheck.timer
+fi
 
 # Wait for Windows host to become reachable before running host hardening
 HOST_IP="${HOST_IP:-192.168.1.100}"
