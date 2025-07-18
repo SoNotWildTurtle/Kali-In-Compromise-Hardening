@@ -70,6 +70,7 @@ Key objectives:
 - **Smart Port Monitoring**: A timer-driven script records listening ports and logs unexpected changes.
 - **Automatic IP Blocking**: Repeated IDS alerts trigger a script that blocks offending IP addresses via iptables.
 - **IDS Alert Reporting**: A timer summarizes new IDS alerts each hour and logs counts of offending IPs.
+- **Threat Feed IP Blocking**: Daily job fetches community blocklists and automatically drops traffic from known malicious IPs.
 
 ---
 
@@ -88,6 +89,7 @@ Scripts are organized as modules that work together to produce the hardened imag
 - `setup_nn_ids.sh`, `setup_nn_ids.service`, `nn_ids_setup.py`, `nn_ids_service.py`, `nn_ids_capture.py`, and `nn_ids_retrain.py` – Download datasets, train the neural network IDS, capture live traffic, and periodically retrain the model in parallel.
 - `nn_ids_autoblock.py` and timer/service units – Block IPs automatically when repeated alerts are seen.
 - `nn_ids_report.py` and timer/service units – Summarize alerts and log top offending IPs.
+- `threat_feed_blocklist.py` and timer/service units – Fetch threat feeds and block listed IP addresses.
 - `packet_sanitizer.py` – Utility for cleansing datasets before model training.
 - `mac_randomizer.sh` and `mac_randomizer.service` – Randomize the MAC address at boot.
 - `build_custom_iso.sh` – Helper to package the above into a custom ISO.

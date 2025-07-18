@@ -49,6 +49,9 @@ NN_BLOCK_TIMER="nn_ids_autoblock.timer"
 NN_REPORT="nn_ids_report.py"
 NN_REPORT_SVC="nn_ids_report.service"
 NN_REPORT_TIMER="nn_ids_report.timer"
+THREAT_FEED="threat_feed_blocklist.py"
+THREAT_FEED_SVC="threat_feed_blocklist.service"
+THREAT_FEED_TIMER="threat_feed_blocklist.timer"
 
 # Check dependencies
 for cmd in bsdtar mkisofs isohybrid; do
@@ -111,6 +114,9 @@ cp "$NN_BLOCK_TIMER" "$INSTALL_DIR/"
 cp "$NN_REPORT" "$INSTALL_DIR/"
 cp "$NN_REPORT_SVC" "$INSTALL_DIR/"
 cp "$NN_REPORT_TIMER" "$INSTALL_DIR/"
+cp "$THREAT_FEED" "$INSTALL_DIR/"
+cp "$THREAT_FEED_SVC" "$INSTALL_DIR/"
+cp "$THREAT_FEED_TIMER" "$INSTALL_DIR/"
 cat <<SERVICE > "$INSTALL_DIR/firstboot.service"
 [Unit]
 Description=First boot hardening

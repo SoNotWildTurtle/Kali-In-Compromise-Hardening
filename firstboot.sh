@@ -148,6 +148,9 @@ fi
 if systemctl list-unit-files | grep -q '^nn_ids_report.timer'; then
     systemctl start nn_ids_report.timer
 fi
+if systemctl list-unit-files | grep -q '^threat_feed_blocklist.timer'; then
+    systemctl start threat_feed_blocklist.timer
+fi
 
 # Final Cleanup and Disable First Boot Service
 systemctl disable firstboot.service
