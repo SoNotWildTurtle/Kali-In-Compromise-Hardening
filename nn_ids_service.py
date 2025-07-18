@@ -25,6 +25,15 @@ def analyze(pkt):
         return
     feats = extract_features(pkt)
     if feats:
+        prob = clf.predict_proba([feats])[0][1]
+        pred = int(prob >= 0.5)
+        key = tuple(feats)
+        if pred == 1:
+            with open('/var/log/nn_ids_alerts.log', 'a') as f:
+                if prob >= 0.8:
+                    f.write(f'High confidence threat ({prob:.2f}): {pkt.summary()}\n')
+                else:
+                    f.write(f'Low confidence threat ({prob:.2f}): {pkt.summary()}\n')
         pred = clf.predict([feats])[0]
         key = tuple(feats)
         if pred == 1:

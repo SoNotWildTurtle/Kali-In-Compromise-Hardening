@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import accuracy_score, f1_score
 import numpy as np
 import joblib
 import fcntl
@@ -49,8 +50,13 @@ def main():
 
     clf = MLPClassifier(hidden_layer_sizes=(64, 64), max_iter=20)
     clf.fit(aug_X, aug_y)
+    preds = clf.predict(X_test)
+    acc = accuracy_score(y_test, preds)
+    f1 = f1_score(y_test, preds, zero_division=0)
     joblib.dump(clf, MODEL_PATH)
-
+    with open('/var/log/nn_ids_train.log', 'a') as log:
+        log.write(f"Retrain accuracy: {acc:.2f} f1: {f1:.2f}\n")
+    joblib.dump(clf, MODEL_PATH)
 
 if __name__ == "__main__":
     main()

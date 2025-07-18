@@ -5,6 +5,7 @@ import tarfile
 import urllib.request
 import hashlib
 from pathlib import Path
+from sklearn.metrics import accuracy_score, f1_score
 
 try:
     import pandas as pd
@@ -99,6 +100,13 @@ def train_model() -> None:
 
     clf = MLPClassifier(hidden_layer_sizes=(64, 64), max_iter=20)
     clf.fit(aug_X, aug_y)
+    preds = clf.predict(X_test)
+    acc = accuracy_score(y_test, preds)
+    f1 = f1_score(y_test, preds, zero_division=0)
+    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(clf, MODEL_PATH)
+    with open('/var/log/nn_ids_train.log', 'a') as log:
+        log.write(f"Initial training accuracy: {acc:.2f} f1: {f1:.2f}\n")
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(clf, MODEL_PATH)
     print(f"Model trained and saved to {MODEL_PATH}")
