@@ -46,6 +46,9 @@ NN_LOGROTATE="nn_ids_logrotate"
 NN_BLOCK="nn_ids_autoblock.py"
 NN_BLOCK_SVC="nn_ids_autoblock.service"
 NN_BLOCK_TIMER="nn_ids_autoblock.timer"
+NN_REPORT="nn_ids_report.py"
+NN_REPORT_SVC="nn_ids_report.service"
+NN_REPORT_TIMER="nn_ids_report.timer"
 
 # Check dependencies
 for cmd in bsdtar mkisofs isohybrid; do
@@ -105,6 +108,9 @@ cp "$NN_LOGROTATE" "$INSTALL_DIR/"
 cp "$NN_BLOCK" "$INSTALL_DIR/"
 cp "$NN_BLOCK_SVC" "$INSTALL_DIR/"
 cp "$NN_BLOCK_TIMER" "$INSTALL_DIR/"
+cp "$NN_REPORT" "$INSTALL_DIR/"
+cp "$NN_REPORT_SVC" "$INSTALL_DIR/"
+cp "$NN_REPORT_TIMER" "$INSTALL_DIR/"
 cat <<SERVICE > "$INSTALL_DIR/firstboot.service"
 [Unit]
 Description=First boot hardening

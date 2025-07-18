@@ -17,3 +17,13 @@
     delaycompress
     create 0640 root adm
 }
+
+/var/log/nn_ids_report.log {
+    rotate 7
+    daily
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0640 root adm
+}
