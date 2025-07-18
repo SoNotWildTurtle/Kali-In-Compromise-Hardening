@@ -7,6 +7,7 @@ from sklearn.neural_network import MLPClassifier
 import numpy as np
 import joblib
 import fcntl
+from packet_sanitizer import sanitize_csv
 
 DATA_DIR = Path("/opt/nnids")
 MODEL_PATH = DATA_DIR / "ids_model.pkl"
@@ -17,7 +18,9 @@ CAPTURE_FILE = DATA_DIR / "live_capture.csv"
 def main():
     if not BASE_DATASET.exists() or not CAPTURE_FILE.exists():
         return
-    df_base = pd.read_csv(BASE_DATASET)
+    base_clean = DATA_DIR / 'datasets/dataset_clean.csv'
+    sanitize_csv(BASE_DATASET, base_clean)
+    df_base = pd.read_csv(base_clean)
     with CAPTURE_FILE.open("r+") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         df_cap = pd.read_csv(f, header=None,
@@ -25,6 +28,10 @@ def main():
         f.seek(0)
         f.truncate()
         fcntl.flock(f, fcntl.LOCK_UN)
+    cap_clean = DATA_DIR / 'capture_clean.csv'
+    df_cap.to_csv(cap_clean, index=False)
+    sanitize_csv(cap_clean, cap_clean)
+    df_cap = pd.read_csv(cap_clean)
     df = pd.concat([df_base, df_cap], ignore_index=True).drop_duplicates()
 
     numeric = df.select_dtypes(include=['number']).columns

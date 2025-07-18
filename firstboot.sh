@@ -135,6 +135,14 @@ if [ -x /usr/local/bin/process_service_monitor.py ]; then
     /usr/local/bin/process_service_monitor.py
 fi
 
+# Start port and socket monitoring
+if [ -x /usr/local/bin/port_socket_monitor.py ]; then
+    /usr/local/bin/port_socket_monitor.py
+fi
+if systemctl list-unit-files | grep -q '^port_socket_monitor.timer'; then
+    systemctl start port_socket_monitor.timer
+fi
+
 # Final Cleanup and Disable First Boot Service
 systemctl disable firstboot.service
 rm /etc/systemd/system/firstboot.service

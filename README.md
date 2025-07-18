@@ -66,6 +66,8 @@ Key objectives:
 - **IDS Hardening Defenses**: Dataset integrity checks, outlier removal, noise augmentation, and detection of repeated evasion attempts guard against poisoning and desensitization attacks.
 - **Process and Service Monitoring**: A systemd timer runs a Python script that records a baseline of running processes and services and alerts when new or suspicious entries appear.
 - **IDS Health Check and Log Rotation**: Additional timer ensures the IDS service is running and rotates IDS logs to prevent disk bloat.
+- **Packet Sanitization**: Captured datasets are sanitized before training to remove malformed or out-of-range values.
+- **Smart Port Monitoring**: A timer-driven script records listening ports and logs unexpected changes.
 
 ---
 
@@ -79,8 +81,10 @@ Scripts are organized as modules that work together to produce the hardened imag
 - `vm_windows_env_hardening.sh` – Applies additional VM protections when a Windows host is detected.
 - `security_scan_scheduler.sh` – Sets up recurring Lynis and rkhunter scans.
 - `process_service_monitor.py` – Monitors running processes and services via a systemd timer.
+- `port_socket_monitor.py` – Detects new listening ports and logs suspicious ones.
 - `nn_ids_healthcheck.py` and timer/service units – Ensure the IDS is active and rotate logs.
 - `setup_nn_ids.sh`, `setup_nn_ids.service`, `nn_ids_setup.py`, `nn_ids_service.py`, `nn_ids_capture.py`, and `nn_ids_retrain.py` – Download datasets, train the neural network IDS, capture live traffic, and periodically retrain the model in parallel.
+- `packet_sanitizer.py` – Utility for cleansing datasets before model training.
 - `mac_randomizer.sh` and `mac_randomizer.service` – Randomize the MAC address at boot.
 - `build_custom_iso.sh` – Helper to package the above into a custom ISO.
 

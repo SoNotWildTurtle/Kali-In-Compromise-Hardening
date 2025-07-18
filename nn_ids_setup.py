@@ -12,6 +12,7 @@ try:
     from sklearn.neural_network import MLPClassifier
     import numpy as np
     import joblib
+    from packet_sanitizer import sanitize_csv
 except ImportError:
     print("Required Python packages not installed. Please install pandas, scikit-learn, and joblib.")
     raise
@@ -70,7 +71,9 @@ def train_model() -> None:
     if not csv_path.exists():
         print(f"Training data {csv_path} not found. Skipping training.")
         return
-    df = pd.read_csv(csv_path)
+    sanitized = DATA_DIR / "dataset_clean.csv"
+    sanitize_csv(csv_path, sanitized)
+    df = pd.read_csv(sanitized)
     if 'label' not in df.columns:
         print("CSV missing 'label' column. Skipping training.")
         return
