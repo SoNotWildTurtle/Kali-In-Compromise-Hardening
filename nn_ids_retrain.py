@@ -56,7 +56,7 @@ def main():
     joblib.dump(clf, MODEL_PATH)
     with open('/var/log/nn_ids_train.log', 'a') as log:
         log.write(f"Retrain accuracy: {acc:.2f} f1: {f1:.2f}\n")
-
+    joblib.dump(clf, MODEL_PATH)
 
 if __name__ == "__main__":
     main()

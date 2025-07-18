@@ -107,6 +107,8 @@ def train_model() -> None:
     joblib.dump(clf, MODEL_PATH)
     with open('/var/log/nn_ids_train.log', 'a') as log:
         log.write(f"Initial training accuracy: {acc:.2f} f1: {f1:.2f}\n")
+    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(clf, MODEL_PATH)
     print(f"Model trained and saved to {MODEL_PATH}")
 
 

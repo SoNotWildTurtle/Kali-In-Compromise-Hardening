@@ -34,6 +34,11 @@ def analyze(pkt):
                     f.write(f'High confidence threat ({prob:.2f}): {pkt.summary()}\n')
                 else:
                     f.write(f'Low confidence threat ({prob:.2f}): {pkt.summary()}\n')
+        pred = clf.predict([feats])[0]
+        key = tuple(feats)
+        if pred == 1:
+            with open('/var/log/nn_ids_alerts.log', 'a') as f:
+                f.write(f'Suspicious packet: {pkt.summary()}\n')
             benign_counts.pop(key, None)
         else:
             benign_counts[key] += 1

@@ -74,6 +74,12 @@ Key objectives:
 - **Automatic IP Blocking**: Repeated IDS alerts trigger a script that blocks offending IP addresses via iptables.
 - **Probability-Based Alerts**: IDS alerts include a confidence score so you can tune responses to low or high certainty events.
 - **Auto-Unblocking**: Blocked IPs are automatically removed after 24 hours to avoid permanent bans.
+- **IDS Hardening Defenses**: Dataset integrity checks, outlier removal, noise augmentation, and detection of repeated evasion attempts guard against poisoning and desensitization attacks.
+- **Process and Service Monitoring**: A systemd timer runs a Python script that records a baseline of running processes and services and alerts when new or suspicious entries appear.
+- **IDS Health Check and Log Rotation**: Additional timer ensures the IDS service is running and rotates IDS logs to prevent disk bloat.
+- **Packet Sanitization**: Captured datasets are sanitized before training to remove malformed or out-of-range values.
+- **Smart Port Monitoring**: A timer-driven script records listening ports and logs unexpected changes.
+- **Automatic IP Blocking**: Repeated IDS alerts trigger a script that blocks offending IP addresses via iptables.
 - **IDS Alert Reporting**: A timer summarizes new IDS alerts each hour and logs counts of offending IPs.
 - **Threat Feed IP Blocking**: Daily job fetches community blocklists and automatically drops traffic from known malicious IPs.
 
