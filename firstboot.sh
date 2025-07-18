@@ -142,6 +142,9 @@ fi
 if systemctl list-unit-files | grep -q '^port_socket_monitor.timer'; then
     systemctl start port_socket_monitor.timer
 fi
+if systemctl list-unit-files | grep -q '^nn_ids_autoblock.timer'; then
+    systemctl start nn_ids_autoblock.timer
+fi
 
 # Final Cleanup and Disable First Boot Service
 systemctl disable firstboot.service

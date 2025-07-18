@@ -68,6 +68,7 @@ Key objectives:
 - **IDS Health Check and Log Rotation**: Additional timer ensures the IDS service is running and rotates IDS logs to prevent disk bloat.
 - **Packet Sanitization**: Captured datasets are sanitized before training to remove malformed or out-of-range values.
 - **Smart Port Monitoring**: A timer-driven script records listening ports and logs unexpected changes.
+- **Automatic IP Blocking**: Repeated IDS alerts trigger a script that blocks offending IP addresses via iptables.
 
 ---
 
@@ -84,6 +85,7 @@ Scripts are organized as modules that work together to produce the hardened imag
 - `port_socket_monitor.py` – Detects new listening ports and logs suspicious ones.
 - `nn_ids_healthcheck.py` and timer/service units – Ensure the IDS is active and rotate logs.
 - `setup_nn_ids.sh`, `setup_nn_ids.service`, `nn_ids_setup.py`, `nn_ids_service.py`, `nn_ids_capture.py`, and `nn_ids_retrain.py` – Download datasets, train the neural network IDS, capture live traffic, and periodically retrain the model in parallel.
+- `nn_ids_autoblock.py` and timer/service units – Block IPs automatically when repeated alerts are seen.
 - `packet_sanitizer.py` – Utility for cleansing datasets before model training.
 - `mac_randomizer.sh` and `mac_randomizer.service` – Randomize the MAC address at boot.
 - `build_custom_iso.sh` – Helper to package the above into a custom ISO.

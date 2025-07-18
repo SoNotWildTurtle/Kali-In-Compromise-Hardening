@@ -903,6 +903,8 @@ To maintain a highly secure environment, implement the following best practices 
    - Optional scripts download publicly available malware datasets from Georgia Tech, train a lightweight neural network model, and start a background service that inspects traffic using the model.
 4. **Process and Service Monitoring**:
    - A built-in Python script establishes a baseline of running processes and services on first boot and continuously checks for unexpected changes via a systemd timer.
+5. **Automatic IP Blocking**:
+   - Repeated IDS alerts cause offending IP addresses to be firewalled automatically.
 
 ---
 
