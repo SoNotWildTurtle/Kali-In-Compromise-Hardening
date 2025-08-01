@@ -899,6 +899,12 @@ To maintain a highly secure environment, implement the following best practices 
 
 2. **Endpoint Detection and Response (EDR)**:
    - Deploy EDR solutions to provide real-time monitoring and response capabilities against advanced threats.
+3. **Neural Network IDS**:
+   - Optional scripts download publicly available malware datasets from Georgia Tech, train a lightweight neural network model, and start a background service that inspects traffic using the model.
+4. **Process and Service Monitoring**:
+   - A built-in Python script establishes a baseline of running processes and services on first boot and continuously checks for unexpected changes via a systemd timer.
+5. **Automatic IP Blocking**:
+   - Repeated IDS alerts cause offending IP addresses to be firewalled automatically.
 
 ---
 
@@ -912,6 +918,7 @@ By meticulously implementing the enhanced preseed configuration and automating a
 - **Automation**: Automating installation and hardening processes minimizes human error and ensures consistency.
 - **Secure Remote Management**: Properly configuring remote management tools like PowerShell Remoting and SSH facilitates secure and efficient administration.
 - **Ongoing Security Practices**: Regular audits, updates, and monitoring are essential to maintain and enhance system security over time.
+- **Packet Sanitization & Port Monitoring**: New utilities sanitize captured network data and alert on unexpected listening ports, further tightening intrusion detection. Packet sanitization can be disabled via `/etc/nn_ids.conf`.
 
 **Final Recommendations:**
 
