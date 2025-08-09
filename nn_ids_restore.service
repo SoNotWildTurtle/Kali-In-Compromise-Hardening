@@ -1,0 +1,6 @@
+[Unit]
+Description=Restore NN IDS from snapshot if missing
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nn_ids_restore.py

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run internet access monitor periodically
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
