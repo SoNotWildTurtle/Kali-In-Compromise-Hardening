@@ -920,6 +920,7 @@ By meticulously implementing the enhanced preseed configuration and automating a
 - **Secure Remote Management**: Properly configuring remote management tools like PowerShell Remoting and SSH facilitates secure and efficient administration.
 - **Ongoing Security Practices**: Regular audits, updates, and monitoring are essential to maintain and enhance system security over time.
 - **Packet Sanitization & Port Monitoring**: New utilities sanitize captured network data and alert on unexpected listening ports, further tightening intrusion detection. Packet sanitization can be disabled via `/etc/nn_ids.conf`.
+- **Packet Sanitization & Port Monitoring**: New utilities sanitize captured network data and alert on unexpected listening ports, further tightening intrusion detection.
 
 **Final Recommendations:**
 

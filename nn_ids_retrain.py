@@ -28,6 +28,8 @@ def main():
         df_base = pd.read_csv(base_clean)
     else:
         df_base = pd.read_csv(BASE_DATASET)
+    sanitize_csv(BASE_DATASET, base_clean)
+    df_base = pd.read_csv(base_clean)
     with CAPTURE_FILE.open("r+") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         df_cap = pd.read_csv(f, header=None,
@@ -39,6 +41,7 @@ def main():
     df_cap.to_csv(cap_clean, index=False)
     if SANITIZE_ENABLED:
         sanitize_csv(cap_clean, cap_clean)
+    sanitize_csv(cap_clean, cap_clean)
     df_cap = pd.read_csv(cap_clean)
     df = pd.concat([df_base, df_cap], ignore_index=True).drop_duplicates()
 
@@ -64,6 +67,7 @@ def main():
     with open('/var/log/nn_ids_train.log', 'a') as log:
         log.write(f"Retrain accuracy: {acc:.2f} f1: {f1:.2f}\n")
 
+    joblib.dump(clf, MODEL_PATH)
 
 if __name__ == "__main__":
     main()
