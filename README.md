@@ -52,6 +52,14 @@ Key objectives:
 - **Automated Kali Linux Installation**: Uses a preseed file to automate the installation process with extensive hardening measures.
 - **Custom Security Configurations**: Implements best practices and advanced security settings based on CIS Benchmarks and academic research.
 - **First Boot Hardening**: Executes additional hardening commands during the first startup using systemd services.
+- **Automated Windows 11 Host Hardening**: Utilizes PowerShell scripts to remotely harden a Windows 11 host from the Kali VM. Controlled Folder Access is enabled and SMBv1 is disabled to reduce ransomware and network attack vectors.
+- **Automated Windows Remote Setup**: The Windows hardening script installs and enables OpenSSH and PowerShell Remoting, enables transcript logging, and schedules daily updates.
+- **Enhanced Windows Hardening**: Firewall logging is enabled, Sysmon is installed for system telemetry, Attack Surface Reduction rules are turned on, TLS 1.2 is enforced, and the Security event log size is increased.
+- **Additional Windows Protections**: LLMNR is disabled, PowerShell script block logging is enabled, and system-wide exploit mitigations are applied.
+- **Windows Host-Aware VM Hardening**: Additional firewall and virtualization tweaks protect the Kali VM when running on a Windows host.
+- **Automated Linux Host Hardening**: Bash script connects over SSH to apply firewall rules and security tools on a Linux host. Root login and password authentication are disabled, unattended upgrades are enabled, and baseline rkhunter and Lynis scans run automatically.
+- **Extended Linux Protections**: AppArmor is enforced, AIDE initializes a file-integrity database, and hardened sysctl parameters disable redirects and enforce address space randomization.
+- **Linux Host-Aware VM Hardening**: Extra restrictions are applied when the VM is hosted on a Linux machine.
 - **Automated Windows 11 Host Hardening**: Utilizes PowerShell scripts to remotely harden a Windows 11 host from the Kali VM.
 - **Automated Windows Remote Setup**: The Windows hardening script installs and enables OpenSSH and PowerShell Remoting, enables transcript logging, and schedules daily updates.
 - **Windows Host-Aware VM Hardening**: Additional firewall and virtualization tweaks protect the Kali VM when running on a Windows host.
@@ -61,6 +69,16 @@ Key objectives:
 - **Port Scan Detection with psad**: Monitors iptables logs for potential network attacks.
 - **Baseline Auditing**: First boot verifies package integrity with `debsums` and performs a quick Lynis scan.
 - **Scheduled Security Scans**: Daily `lynis` and `rkhunter` checks are configured via cron.
+- **Wiper and Malware Protection**: ClamAV runs daily scans, critical system files are backed up and locked with immutable attributes, and an inotify-based monitor watches for deletion attempts to thwart destructive wipers.
+- **MAC Address Randomization**: The primary network interface receives a new MAC on each boot.
+- **Network I/O Logging**: Inbound and outbound traffic is logged from the first boot for review.
+- **Internet Connectivity Guard**: A periodic check keeps outbound access open and restores networking if connectivity is lost, activating SD-WAN, Cisco, or VMware interfaces to maintain at least one active link.
+- **Initial Network Discovery**: After hardening completes, a one-time sweep leverages `nmap`, `netdiscover`, `arp-scan`, `nbtscan`, `dnsrecon`, and optional `whatweb`/`enum4linux` probes to profile local hosts, services, DNS/NetBIOS data, and web fingerprints, saving logs and an HTML visualization to `~/Desktop/initial network discovery`.
+- **IDS Control Menu**: A terminal menu toggles malicious packet notifications and selects how aggressively to launch follow-up network discovery when alerts occur.
+- **Secure Coding Environment**: Optional script installs Visual Studio Code (code-oss) and configures git with secure defaults. Static analysis tools are enabled via pre-commit hooks and a GPG key is generated so commits are signed automatically.
+- **Professional VM Hardening**: Extra kernel hardening, secure tmp mount, AppArmor enforcement, and needrestart ensure the VM meets professional standards.
+- **Neural Network IDS**: Scripts fetch GA Tech malware datasets, train a neural network model, capture live traffic for additional learning, and periodically retrain the model. Training runs in parallel with packet capture and live analysis using systemd services.
+- **OS Baseline Modeling**: A small neural network records core OS characteristics to detect future configuration drift.
 - **MAC Address Randomization**: The primary network interface receives a new MAC on each boot.
 - **Neural Network IDS**: Scripts fetch GA Tech malware datasets, train a neural network model, capture live traffic for additional learning, and periodically retrain the model. Training runs in parallel with packet capture and live analysis using systemd services.
 - **Training Metrics Logging**: Accuracy and F1 score are recorded after each training or retraining run.
@@ -69,11 +87,16 @@ Key objectives:
 - **IDS Health Check and Log Rotation**: Additional timer ensures the IDS service is running and rotates IDS logs to prevent disk bloat.
 - **IDS Resource Usage Monitoring**: Another timer verifies the IDS process stays within CPU and memory limits, restarting it if needed.
 - **Training Log Rotation**: Model training metrics are logged and rotated to keep logs manageable.
+- **Packet Sanitization**: Captured datasets are sanitized before training to remove malformed or out-of-range values. This can be toggled by editing `/etc/nn_ids.conf` and setting `NN_IDS_SANITIZE=0`.
+- **Automated Dataset Sanitization**: A timer-driven script periodically cleans the IDS datasets to prevent poisoning.
 - **Packet Sanitization**: Captured datasets are sanitized before training to remove malformed or out-of-range values.
 - **Smart Port Monitoring**: A timer-driven script records listening ports and logs unexpected changes.
 - **Automatic IP Blocking**: Repeated IDS alerts trigger a script that blocks offending IP addresses via iptables.
 - **Probability-Based Alerts**: IDS alerts include a confidence score so you can tune responses to low or high certainty events.
 - **Auto-Unblocking**: Blocked IPs are automatically removed after 24 hours to avoid permanent bans.
+- **IDS Alert Reporting**: A timer summarizes new IDS alerts each hour and logs counts of offending IPs.
+- **Threat Feed IP Blocking**: Daily job fetches community blocklists and automatically drops traffic from known malicious IPs.
+- **Self-Healing Snapshots**: Daily snapshots of the IDS model and datasets allow automatic restoration or retraining if files are wiped.
 - **IDS Hardening Defenses**: Dataset integrity checks, outlier removal, noise augmentation, and detection of repeated evasion attempts guard against poisoning and desensitization attacks.
 - **Process and Service Monitoring**: A systemd timer runs a Python script that records a baseline of running processes and services and alerts when new or suspicious entries appear.
 - **IDS Health Check and Log Rotation**: Additional timer ensures the IDS service is running and rotates IDS logs to prevent disk bloat.
@@ -90,6 +113,22 @@ Key objectives:
 Scripts are organized as modules that work together to produce the hardened image:
 
 - `kali-preseed.cfg` – Automates the base installation and seeds security packages.
+- `kali-preseed-single.cfg` – Variant preseed for single-OS installs without Windows host hardening.
+- `firstboot.sh` – Runs once after installation to apply further hardening and invoke other modules.
+- `firstboot_single.sh` – Simplified first boot script used for standalone installs without Windows host integration.
+- `host_hardening_windows.sh` and `windows_hardening.ps1` – Harden a Windows host from the VM.
+- `host_hardening_linux.sh` – Harden a Linux host via SSH.
+- `vm_windows_env_hardening.sh` – Applies additional VM protections when a Windows host is detected.
+- `vm_linux_env_hardening.sh` – Applies additional VM protections when a Linux host is detected.
+- `security_scan_scheduler.sh` – Sets up recurring Lynis and rkhunter scans.
+- `process_service_monitor.py` – Monitors running processes and services via a systemd timer.
+- `vm_pro_hardening.sh` – Applies professional-level kernel and AppArmor hardening within the VM.
+- `port_socket_monitor.py` – Detects new listening ports and logs suspicious ones.
+- `network_discovery.sh` – Runs an expansive reconnaissance suite (`nmap`, `netdiscover`, `arp-scan`, `nbtscan`, `dnsrecon`, etc.) and saves results under `~/Desktop/initial network discovery` for baseline analysis.
+- `network_discovery_visualize.py` – Parses discovery results and creates an HTML report with port-distribution graphs.
+- `ids_menu.sh` – Interactive menu to toggle IDS notifications and choose network discovery response modes.
+- `nn_ids_healthcheck.py` and timer/service units – Ensure the IDS is active and rotate logs.
+- `setup_nn_ids.sh`, `setup_nn_ids.service`, `nn_ids_setup.py`, `nn_os_train.py`, `nn_ids_service.py`, `nn_ids_capture.py`, and `nn_ids_retrain.py` – Download datasets, build an OS baseline model, train the neural network IDS, capture live traffic, and periodically retrain the model in parallel.
 - `firstboot.sh` – Runs once after installation to apply further hardening and invoke other modules.
 - `host_hardening_windows.sh` and `windows_hardening.ps1` – Harden a Windows host from the VM.
 - `vm_windows_env_hardening.sh` – Applies additional VM protections when a Windows host is detected.
@@ -102,6 +141,18 @@ Scripts are organized as modules that work together to produce the hardened imag
 - `nn_ids_report.py` and timer/service units – Summarize alerts and log top offending IPs.
 - `threat_feed_blocklist.py` and timer/service units – Fetch threat feeds and block listed IP addresses.
 - `nn_ids_resource_monitor.py` and timer/service units – Restart the IDS if it uses too much CPU or memory.
+- `nn_ids_sanitize.py` and timer/service units – Periodically clean datasets to defend against poisoning.
+- `nn_ids_snapshot.py` and timer/service units – Take periodic snapshots of the model and datasets.
+- `nn_ids_restore.py` and timer/service units – Restore or rebuild the model from the latest snapshot if wiped.
+- `packet_sanitizer.py` – Utility for cleansing datasets before model training.
+- `/etc/nn_ids.conf` – Configuration file controlling IDS options like packet sanitization, notification, and discovery response.
+- `mac_randomizer.sh` and `mac_randomizer.service` – Randomize the MAC address at boot.
+- `network_io_monitor.sh` and `network_io_monitor.service` – Log all network I/O to dedicated files.
+- `internet_access_monitor.sh` and timer/service units – Verify connectivity, activate SD-WAN/Cisco/VMware interfaces if needed, and restart networking if access drops.
+- `secure_dev_env.sh` – Installs Visual Studio Code, secure git defaults, pre-commit tooling, and auto-generates a GPG key for signed commits.
+- `.pre-commit-config.yaml` – Global configuration enabling Black, Flake8, Bandit, and ShellCheck.
+- `build_custom_iso.sh` – Downloads the latest Kali installer or live ISO and packages the hardening scripts into a custom image.
+- `anti_wipe_monitor.sh` and `anti_wipe_monitor.service` – Monitor critical directories for deletion and re-apply immutable flags if tampering is detected.
 - `packet_sanitizer.py` – Utility for cleansing datasets before model training.
 - `mac_randomizer.sh` and `mac_randomizer.service` – Randomize the MAC address at boot.
 - `build_custom_iso.sh` – Helper to package the above into a custom ISO.
@@ -119,7 +170,7 @@ These modules are referenced in the preseed late commands and copied onto the IS
 
 ### Software
 
-- **Kali Linux ISO**: Download the latest version from [Kali Downloads](https://www.kali.org/get-kali/).
+- **Kali Linux ISO**: The build script fetches the required installer or live image automatically, but you can also download it manually from [Kali Downloads](https://www.kali.org/get-kali/).
 - **Linux Environment**: A Linux system (can be a separate machine or a live environment) to create the custom ISO.
 - **Tools**:
   - `genisoimage` or `mkisofs`: For building ISO images.
@@ -209,6 +260,7 @@ The preseed file automates the Kali Linux installation process with extensive se
        ufw \
        auditd \
        clamav \
+       clamav-daemon \
        apparmor \
        unattended-upgrades \
        ntp \
@@ -461,6 +513,8 @@ The custom ISO incorporates the preseed file to automate installation and harden
 Alternatively, run the provided `build_custom_iso.sh` script to automate these steps:
 
 ```bash
+./build_custom_iso.sh live kali-custom-live.iso
+./build_custom_iso.sh installer kali-custom-installer.iso
 ./build_custom_iso.sh kali-linux-latest-amd64.iso kali-custom-auto.iso
 ```
 
@@ -677,6 +731,8 @@ With remote management configured, use scripts to automate the hardening of the 
 - **Integrate Monitoring Tools**: Incorporate additional monitoring and intrusion detection tools for enhanced security oversight.
 - **Tune Scheduled Scans**: Adjust `/etc/cron.d/security-scans` if you need different frequencies for the daily `lynis` and `rkhunter` jobs.
 - **Modify MAC Randomization**: Edit `/usr/local/bin/mac_randomizer.sh` to target the correct interface or adjust the service schedule.
+- **Toggle Packet Sanitization**: Set `NN_IDS_SANITIZE=0` in `/etc/nn_ids.conf` to disable automatic dataset cleansing.
+- **Configure IDS Responses**: Run `ids_menu.sh` or edit `/etc/nn_ids.conf` to adjust `NN_IDS_NOTIFY` and `NN_IDS_DISCOVERY_MODE` (auto|manual|notify|none).
 
 ---
 

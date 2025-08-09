@@ -18,6 +18,8 @@ except ImportError:
     print("Required Python packages not installed. Please install pandas, scikit-learn, and joblib.")
     raise
 
+SANITIZE_ENABLED = os.getenv("NN_IDS_SANITIZE", "1") == "1"
+
 DATASET_URLS = [
     "https://giantpanda.gtisc.gatech.edu/malrec/dataset/malrec_dataset.tar",
     "https://giantpanda.gtisc.gatech.edu/malrec/dataset/references.tar.xz",
@@ -73,6 +75,11 @@ def train_model() -> None:
         print(f"Training data {csv_path} not found. Skipping training.")
         return
     sanitized = DATA_DIR / "dataset_clean.csv"
+    if SANITIZE_ENABLED:
+        sanitize_csv(csv_path, sanitized)
+        df = pd.read_csv(sanitized)
+    else:
+        df = pd.read_csv(csv_path)
     sanitize_csv(csv_path, sanitized)
     df = pd.read_csv(sanitized)
     if 'label' not in df.columns:

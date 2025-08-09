@@ -9,6 +9,9 @@ import numpy as np
 import joblib
 import fcntl
 from packet_sanitizer import sanitize_csv
+import os
+
+SANITIZE_ENABLED = os.getenv("NN_IDS_SANITIZE", "1") == "1"
 
 DATA_DIR = Path("/opt/nnids")
 MODEL_PATH = DATA_DIR / "ids_model.pkl"
@@ -20,6 +23,11 @@ def main():
     if not BASE_DATASET.exists() or not CAPTURE_FILE.exists():
         return
     base_clean = DATA_DIR / 'datasets/dataset_clean.csv'
+    if SANITIZE_ENABLED:
+        sanitize_csv(BASE_DATASET, base_clean)
+        df_base = pd.read_csv(base_clean)
+    else:
+        df_base = pd.read_csv(BASE_DATASET)
     sanitize_csv(BASE_DATASET, base_clean)
     df_base = pd.read_csv(base_clean)
     with CAPTURE_FILE.open("r+") as f:
@@ -31,6 +39,8 @@ def main():
         fcntl.flock(f, fcntl.LOCK_UN)
     cap_clean = DATA_DIR / 'capture_clean.csv'
     df_cap.to_csv(cap_clean, index=False)
+    if SANITIZE_ENABLED:
+        sanitize_csv(cap_clean, cap_clean)
     sanitize_csv(cap_clean, cap_clean)
     df_cap = pd.read_csv(cap_clean)
     df = pd.concat([df_base, df_cap], ignore_index=True).drop_duplicates()
@@ -56,6 +66,7 @@ def main():
     joblib.dump(clf, MODEL_PATH)
     with open('/var/log/nn_ids_train.log', 'a') as log:
         log.write(f"Retrain accuracy: {acc:.2f} f1: {f1:.2f}\n")
+
     joblib.dump(clf, MODEL_PATH)
 
 if __name__ == "__main__":

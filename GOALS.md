@@ -6,3 +6,7 @@ Our goal is creating a **hardened Kali Linux press containing a self-learning ID
 - Train and run a neural network-based IDS leveraging legal datasets.
 - Provide optional host-hardening tools for Windows environments.
 - Keep documentation and scripts modular for easy customization.
+- Include a secure development environment with Visual Studio Code and git best practices.
+- Extend the secure coding environment with static analysis tools and mandatory commit signing. A GPG key should be generated automatically so all commits are verifiable.
+- Implement self-healing capabilities that snapshot and restore IDS data to recover from wipe attempts.
+- Run an initial network discovery after setup to capture a baseline of hosts and services.

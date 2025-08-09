@@ -3,6 +3,14 @@
 import joblib
 from scapy.all import sniff, IP, TCP
 from collections import defaultdict
+import os
+import subprocess
+
+MODEL_PATH = "/opt/nnids/ids_model.pkl"
+
+NOTIFY_ENABLED = os.getenv("NN_IDS_NOTIFY", "1") == "1"
+DISCOVERY_MODE = os.getenv("NN_IDS_DISCOVERY_MODE", "auto")
+
 
 MODEL_PATH = "/opt/nnids/ids_model.pkl"
 
@@ -29,6 +37,20 @@ def analyze(pkt):
         pred = int(prob >= 0.5)
         key = tuple(feats)
         if pred == 1:
+            message = f"Threat ({prob:.2f}): {pkt.summary()}"
+            with open('/var/log/nn_ids_alerts.log', 'a') as f:
+                if prob >= 0.8:
+                    f.write(f'High confidence {message}\n')
+                else:
+                    f.write(f'Low confidence {message}\n')
+            if NOTIFY_ENABLED:
+                subprocess.run(["wall", message], check=False)
+            if DISCOVERY_MODE == "auto":
+                subprocess.Popen(["/usr/local/bin/network_discovery.sh"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            elif DISCOVERY_MODE == "manual" and NOTIFY_ENABLED:
+                subprocess.run(["wall", "Run /usr/local/bin/network_discovery.sh for details"], check=False)
+            elif DISCOVERY_MODE == "notify" and NOTIFY_ENABLED:
+                subprocess.run(["wall", "Malicious traffic detected"], check=False)
             with open('/var/log/nn_ids_alerts.log', 'a') as f:
                 if prob >= 0.8:
                     f.write(f'High confidence threat ({prob:.2f}): {pkt.summary()}\n')

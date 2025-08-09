@@ -8,3 +8,8 @@ This project automates the creation of a secure Kali Linux ISO and the hardening
 - Validate Python modules with `python3 -m py_compile`.
 - Document new routes or scripts in the README under *Project Structure*.
 - Keep goals in `GOALS.md` aligned with ongoing development.
+- Ensure `secure_dev_env.sh` installs code-oss and is triggered during first boot.
+- The script now auto-generates a GPG key for commit signing; use `git config --global user.name` and `user.email` to personalize the key.
+- Run `pre-commit run --all-files` to execute static analysis before committing changes.
+- When modifying IDS components, ensure `nn_ids_snapshot.py` and `nn_ids_restore.py` continue to function for self-healing.
+- `network_discovery.sh` logs its output to `/home/kali/Desktop/initial network discovery`; adjust paths if user accounts change.

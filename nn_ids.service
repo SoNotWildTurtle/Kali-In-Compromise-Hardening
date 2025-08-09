@@ -4,6 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
+EnvironmentFile=/etc/nn_ids.conf
 ExecStart=/usr/bin/python3 /usr/local/bin/nn_ids_service.py
 
 [Install]

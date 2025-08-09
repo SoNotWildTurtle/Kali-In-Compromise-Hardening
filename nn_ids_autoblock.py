@@ -59,6 +59,7 @@ def unblock_ip(ip):
         with open('/var/log/nn_ids_autoblock.log', 'a') as f:
             f.write(f"{datetime.utcnow().isoformat()} Unblocked {ip}\n")
 
+
 def main():
     state = load_state()
     lines = parse_new_lines(state)
