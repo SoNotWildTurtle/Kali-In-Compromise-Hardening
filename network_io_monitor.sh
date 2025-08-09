@@ -5,6 +5,9 @@ set -euo pipefail
 INBOUND_PORT=${INBOUND_PORT:-5775}
 OUTBOUND_PORT=${OUTBOUND_PORT:-7557}
 
+# network_io_monitor.sh - set up iptables logging for inbound/outbound traffic
+set -euo pipefail
+
 # IPv4 chains
 iptables -nL INLOG >/dev/null 2>&1 || iptables -N INLOG
 iptables -nL OUTLOG >/dev/null 2>&1 || iptables -N OUTLOG
@@ -24,6 +27,11 @@ iptables -A OUTLOG -p tcp --sport "$OUTBOUND_PORT" -m limit --limit 5/min \
     -j LOG --log-prefix "OUTBOUND: " --log-level 4
 iptables -A OUTLOG -p tcp --sport "$OUTBOUND_PORT" -j RETURN
 iptables -A OUTLOG -j DROP
+iptables -A INLOG -m limit --limit 5/min -j LOG --log-prefix "INBOUND: " --log-level 4
+iptables -A INLOG -j RETURN
+iptables -F OUTLOG
+iptables -A OUTLOG -m limit --limit 5/min -j LOG --log-prefix "OUTBOUND: " --log-level 4
+iptables -A OUTLOG -j RETURN
 
 # IPv6 chains
 ip6tables -nL INLOG >/dev/null 2>&1 || ip6tables -N INLOG
@@ -44,6 +52,11 @@ ip6tables -A OUTLOG -p tcp --sport "$OUTBOUND_PORT" -m limit --limit 5/min \
     -j LOG --log-prefix "OUTBOUND6: " --log-level 4
 ip6tables -A OUTLOG -p tcp --sport "$OUTBOUND_PORT" -j RETURN
 ip6tables -A OUTLOG -j DROP
+ip6tables -A INLOG -m limit --limit 5/min -j LOG --log-prefix "INBOUND6: " --log-level 4
+ip6tables -A INLOG -j RETURN
+ip6tables -F OUTLOG
+ip6tables -A OUTLOG -m limit --limit 5/min -j LOG --log-prefix "OUTBOUND6: " --log-level 4
+ip6tables -A OUTLOG -j RETURN
 
 # rsyslog rules
 RSYSLOG_RULES=/etc/rsyslog.d/20-iptables.conf

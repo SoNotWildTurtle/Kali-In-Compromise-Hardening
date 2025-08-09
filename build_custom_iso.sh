@@ -1,5 +1,7 @@
 #!/bin/bash
 # build_custom_iso.sh - Build a custom Kali Linux ISO and automate ISO retrieval.
+# build_custom_iso.sh - Build a custom Kali Linux ISO using the included preseed
+# and first boot hardening script.
 
 set -euo pipefail
 
@@ -29,6 +31,25 @@ NN_SETUP="nn_ids_setup.py"
 NN_RUN="setup_nn_ids.sh"
 NN_RUN_SERVICE="setup_nn_ids.service"
 NN_OS_TRAIN="nn_os_train.py"
+    echo "Usage: $0 <original_kali_iso> <output_iso> [working_dir]" >&2
+    exit 1
+fi
+
+ORIG_ISO="$1"
+OUT_ISO="$2"
+WORKDIR="${3:-/tmp/kali-iso-build}"
+
+PRESEED="kali-preseed.cfg"
+FIRSTBOOT="firstboot.sh"
+HOST_HARDEN="host_hardening_windows.sh"
+WIN_PS="windows_hardening.ps1"
+VM_HARDEN="vm_windows_env_hardening.sh"
+AI_AGENT="ai_agent_commands.sh"
+SEC_SCAN="security_scan_scheduler.sh"
+MAC_RANDOM="mac_randomizer.sh"
+NN_SETUP="nn_ids_setup.py"
+NN_RUN="setup_nn_ids.sh"
+NN_RUN_SERVICE="setup_nn_ids.service"
 NN_SERVICE="nn_ids_service.py"
 NN_SVC_FILE="nn_ids.service"
 NN_CAPTURE="nn_ids_capture.py"
@@ -99,6 +120,9 @@ ORIG_ISO="$WORKDIR/$ISO_NAME"
 
 # Check dependencies
 for cmd in curl bsdtar mkisofs isohybrid; do
+
+# Check dependencies
+for cmd in bsdtar mkisofs isohybrid; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
         echo "Required command '$cmd' not found." >&2
         exit 1
@@ -111,6 +135,8 @@ mkdir -p "$WORKDIR"
 
 # Download original ISO
 curl -L -o "$ORIG_ISO" "$BASE_URL/$ISO_NAME"
+MNTDIR="$WORKDIR/mnt"
+mkdir -p "$MNTDIR"
 
 # Extract original ISO
 bsdtar -C "$WORKDIR" -xf "$ORIG_ISO"
@@ -125,6 +151,17 @@ mkdir -p "$INSTALL_DIR"
 cp "$FIRSTBOOT" "$INSTALL_DIR/"
 cp "$HOST_HARDEN_LINUX" "$INSTALL_DIR/"
 cp "$VM_LINUX_HARDEN" "$INSTALL_DIR/"
+# Copy preseed file
+mkdir -p "$WORKDIR/preseed"
+cp "$PRESEED" "$WORKDIR/preseed/"
+
+# Copy firstboot and host hardening scripts
+INSTALL_DIR="$WORKDIR/install" # location inside ISO root for early scripts
+mkdir -p "$INSTALL_DIR"
+cp "$FIRSTBOOT" "$INSTALL_DIR/"
+cp "$HOST_HARDEN" "$INSTALL_DIR/"
+cp "$WIN_PS" "$INSTALL_DIR/"
+cp "$VM_HARDEN" "$INSTALL_DIR/"
 cp "$AI_AGENT" "$INSTALL_DIR/"
 cp "$SEC_SCAN" "$INSTALL_DIR/"
 cp "$MAC_RANDOM" "$INSTALL_DIR/"
@@ -139,6 +176,9 @@ cp "$NN_SETUP" "$INSTALL_DIR/"
 cp "$NN_RUN" "$INSTALL_DIR/"
 cp "$NN_RUN_SERVICE" "$INSTALL_DIR/"
 cp "$NN_OS_TRAIN" "$INSTALL_DIR/"
+cp "$NN_SETUP" "$INSTALL_DIR/"
+cp "$NN_RUN" "$INSTALL_DIR/"
+cp "$NN_RUN_SERVICE" "$INSTALL_DIR/"
 cp "$NN_SERVICE" "$INSTALL_DIR/"
 cp "$NN_SVC_FILE" "$INSTALL_DIR/"
 cp "$NN_CAPTURE" "$INSTALL_DIR/"

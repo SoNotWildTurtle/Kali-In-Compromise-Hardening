@@ -11,6 +11,8 @@ MODEL_PATH = "/opt/nnids/ids_model.pkl"
 NOTIFY_ENABLED = os.getenv("NN_IDS_NOTIFY", "1") == "1"
 DISCOVERY_MODE = os.getenv("NN_IDS_DISCOVERY_MODE", "auto")
 
+MODEL_PATH = "/opt/nnids/ids_model.pkl"
+
 try:
     clf = joblib.load(MODEL_PATH)
 except Exception:
@@ -48,6 +50,16 @@ def analyze(pkt):
                 subprocess.run(["wall", "Run /usr/local/bin/network_discovery.sh for details"], check=False)
             elif DISCOVERY_MODE == "notify" and NOTIFY_ENABLED:
                 subprocess.run(["wall", "Malicious traffic detected"], check=False)
+            with open('/var/log/nn_ids_alerts.log', 'a') as f:
+                if prob >= 0.8:
+                    f.write(f'High confidence threat ({prob:.2f}): {pkt.summary()}\n')
+                else:
+                    f.write(f'Low confidence threat ({prob:.2f}): {pkt.summary()}\n')
+        pred = clf.predict([feats])[0]
+        key = tuple(feats)
+        if pred == 1:
+            with open('/var/log/nn_ids_alerts.log', 'a') as f:
+                f.write(f'Suspicious packet: {pkt.summary()}\n')
             benign_counts.pop(key, None)
         else:
             benign_counts[key] += 1

@@ -60,6 +60,9 @@ Key objectives:
 - **Automated Linux Host Hardening**: Bash script connects over SSH to apply firewall rules and security tools on a Linux host. Root login and password authentication are disabled, unattended upgrades are enabled, and baseline rkhunter and Lynis scans run automatically.
 - **Extended Linux Protections**: AppArmor is enforced, AIDE initializes a file-integrity database, and hardened sysctl parameters disable redirects and enforce address space randomization.
 - **Linux Host-Aware VM Hardening**: Extra restrictions are applied when the VM is hosted on a Linux machine.
+- **Automated Windows 11 Host Hardening**: Utilizes PowerShell scripts to remotely harden a Windows 11 host from the Kali VM.
+- **Automated Windows Remote Setup**: The Windows hardening script installs and enables OpenSSH and PowerShell Remoting, enables transcript logging, and schedules daily updates.
+- **Windows Host-Aware VM Hardening**: Additional firewall and virtualization tweaks protect the Kali VM when running on a Windows host.
 - **AI Agent Integration**: Optional script demonstrates how to request code improvement suggestions from a generative AI service.
 - **Comprehensive Documentation**: Detailed instructions to guide users through setup, customization, and maintenance.
 - **Secure Remote Management**: Configures secure communication channels between Kali VM and Windows host using SSH or PowerShell Remoting.
@@ -71,11 +74,16 @@ Key objectives:
 - **Port-Separated Network I/O Logging**: All inbound traffic is forced through port 5775 and outbound traffic through port 7557, with each direction logged from the first boot for review.
 - **Internet Connectivity Guard**: A periodic check keeps outbound access open, enforces the dedicated 5775/7557 port split, and restores networking if connectivity is lost, activating SD-WAN, Cisco, or VMware interfaces to maintain at least one active link.
 - **Initial Network Discovery**: After hardening completes, a one-time sweep leverages `nmap`, `netdiscover`, `arp-scan`, `nbtscan`, `dnsrecon`, and optional `whatweb`/`enum4linux` probes to profile local hosts, services, DNS/NetBIOS data, and web fingerprints, saving logs and an HTML visualization to `~/Desktop/initial network discovery`, including a verification that only ports 5775 and 7557 are reachable locally.
+- **Network I/O Logging**: Inbound and outbound traffic is logged from the first boot for review.
+- **Internet Connectivity Guard**: A periodic check keeps outbound access open and restores networking if connectivity is lost, activating SD-WAN, Cisco, or VMware interfaces to maintain at least one active link.
+- **Initial Network Discovery**: After hardening completes, a one-time sweep leverages `nmap`, `netdiscover`, `arp-scan`, `nbtscan`, `dnsrecon`, and optional `whatweb`/`enum4linux` probes to profile local hosts, services, DNS/NetBIOS data, and web fingerprints, saving logs and an HTML visualization to `~/Desktop/initial network discovery`.
 - **IDS Control Menu**: A terminal menu toggles malicious packet notifications and selects how aggressively to launch follow-up network discovery when alerts occur.
 - **Secure Coding Environment**: Optional script installs Visual Studio Code (code-oss) and configures git with secure defaults. Static analysis tools are enabled via pre-commit hooks and a GPG key is generated so commits are signed automatically.
 - **Professional VM Hardening**: Extra kernel hardening, secure tmp mount, AppArmor enforcement, and needrestart ensure the VM meets professional standards.
 - **Neural Network IDS**: Scripts fetch GA Tech malware datasets, train a neural network model, capture live traffic for additional learning, and periodically retrain the model. Training runs in parallel with packet capture and live analysis using systemd services.
 - **OS Baseline Modeling**: A small neural network records core OS characteristics to detect future configuration drift.
+- **MAC Address Randomization**: The primary network interface receives a new MAC on each boot.
+- **Neural Network IDS**: Scripts fetch GA Tech malware datasets, train a neural network model, capture live traffic for additional learning, and periodically retrain the model. Training runs in parallel with packet capture and live analysis using systemd services.
 - **Training Metrics Logging**: Accuracy and F1 score are recorded after each training or retraining run.
 - **IDS Hardening Defenses**: Dataset integrity checks, outlier removal, noise augmentation, and detection of repeated evasion attempts guard against poisoning and desensitization attacks.
 - **Process and Service Monitoring**: A systemd timer runs a Python script that records a baseline of running processes and services and alerts when new or suspicious entries appear.
@@ -84,6 +92,7 @@ Key objectives:
 - **Training Log Rotation**: Model training metrics are logged and rotated to keep logs manageable.
 - **Packet Sanitization**: Captured datasets are sanitized before training to remove malformed or out-of-range values. This can be toggled by editing `/etc/nn_ids.conf` and setting `NN_IDS_SANITIZE=0`.
 - **Automated Dataset Sanitization**: A timer-driven script periodically cleans the IDS datasets to prevent poisoning.
+- **Packet Sanitization**: Captured datasets are sanitized before training to remove malformed or out-of-range values.
 - **Smart Port Monitoring**: A timer-driven script records listening ports and logs unexpected changes.
 - **Automatic IP Blocking**: Repeated IDS alerts trigger a script that blocks offending IP addresses via iptables.
 - **Probability-Based Alerts**: IDS alerts include a confidence score so you can tune responses to low or high certainty events.
@@ -91,6 +100,14 @@ Key objectives:
 - **IDS Alert Reporting**: A timer summarizes new IDS alerts each hour and logs counts of offending IPs.
 - **Threat Feed IP Blocking**: Daily job fetches community blocklists and automatically drops traffic from known malicious IPs.
 - **Self-Healing Snapshots**: Daily snapshots of the IDS model and datasets allow automatic restoration or retraining if files are wiped.
+- **IDS Hardening Defenses**: Dataset integrity checks, outlier removal, noise augmentation, and detection of repeated evasion attempts guard against poisoning and desensitization attacks.
+- **Process and Service Monitoring**: A systemd timer runs a Python script that records a baseline of running processes and services and alerts when new or suspicious entries appear.
+- **IDS Health Check and Log Rotation**: Additional timer ensures the IDS service is running and rotates IDS logs to prevent disk bloat.
+- **Packet Sanitization**: Captured datasets are sanitized before training to remove malformed or out-of-range values.
+- **Smart Port Monitoring**: A timer-driven script records listening ports and logs unexpected changes.
+- **Automatic IP Blocking**: Repeated IDS alerts trigger a script that blocks offending IP addresses via iptables.
+- **IDS Alert Reporting**: A timer summarizes new IDS alerts each hour and logs counts of offending IPs.
+- **Threat Feed IP Blocking**: Daily job fetches community blocklists and automatically drops traffic from known malicious IPs.
 
 ---
 
@@ -115,6 +132,14 @@ Scripts are organized as modules that work together to produce the hardened imag
 - `ids_menu.sh` – Interactive menu to toggle IDS notifications and choose network discovery response modes.
 - `nn_ids_healthcheck.py` and timer/service units – Ensure the IDS is active and rotate logs.
 - `setup_nn_ids.sh`, `setup_nn_ids.service`, `nn_ids_setup.py`, `nn_os_train.py`, `nn_ids_service.py`, `nn_ids_capture.py`, and `nn_ids_retrain.py` – Download datasets, build an OS baseline model, train the neural network IDS, capture live traffic, and periodically retrain the model in parallel.
+- `firstboot.sh` – Runs once after installation to apply further hardening and invoke other modules.
+- `host_hardening_windows.sh` and `windows_hardening.ps1` – Harden a Windows host from the VM.
+- `vm_windows_env_hardening.sh` – Applies additional VM protections when a Windows host is detected.
+- `security_scan_scheduler.sh` – Sets up recurring Lynis and rkhunter scans.
+- `process_service_monitor.py` – Monitors running processes and services via a systemd timer.
+- `port_socket_monitor.py` – Detects new listening ports and logs suspicious ones.
+- `nn_ids_healthcheck.py` and timer/service units – Ensure the IDS is active and rotate logs.
+- `setup_nn_ids.sh`, `setup_nn_ids.service`, `nn_ids_setup.py`, `nn_ids_service.py`, `nn_ids_capture.py`, and `nn_ids_retrain.py` – Download datasets, train the neural network IDS, capture live traffic, and periodically retrain the model in parallel.
 - `nn_ids_autoblock.py` and timer/service units – Block IPs automatically when repeated alerts are seen.
 - `nn_ids_report.py` and timer/service units – Summarize alerts and log top offending IPs.
 - `threat_feed_blocklist.py` and timer/service units – Fetch threat feeds and block listed IP addresses.
@@ -131,6 +156,9 @@ Scripts are organized as modules that work together to produce the hardened imag
 - `.pre-commit-config.yaml` – Global configuration enabling Black, Flake8, Bandit, and ShellCheck.
 - `build_custom_iso.sh` – Downloads the latest Kali installer or live ISO and packages the hardening scripts into a custom image.
 - `anti_wipe_monitor.sh` and `anti_wipe_monitor.service` – Monitor critical directories for deletion and re-apply immutable flags if tampering is detected.
+- `packet_sanitizer.py` – Utility for cleansing datasets before model training.
+- `mac_randomizer.sh` and `mac_randomizer.service` – Randomize the MAC address at boot.
+- `build_custom_iso.sh` – Helper to package the above into a custom ISO.
 
 These modules are referenced in the preseed late commands and copied onto the ISO so the system is secured immediately after installation.
 
@@ -490,6 +518,7 @@ Alternatively, run the provided `build_custom_iso.sh` script to automate these s
 ```bash
 ./build_custom_iso.sh live kali-custom-live.iso
 ./build_custom_iso.sh installer kali-custom-installer.iso
+./build_custom_iso.sh kali-linux-latest-amd64.iso kali-custom-auto.iso
 ```
 
 

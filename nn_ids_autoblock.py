@@ -17,6 +17,7 @@ def load_state():
         with STATE_FILE.open() as f:
             return json.load(f)
     return {'counts': {}, 'blocked': {}, 'pos': 0}
+    return {'counts': {}, 'blocked': [], 'pos': 0}
 
 
 def save_state(state):
@@ -80,6 +81,11 @@ def main():
             block_ip(ip)
             state.setdefault('blocked', {})[ip] = now
 
+    for ip in ips:
+        state['counts'][ip] = state['counts'].get(ip, 0) + 1
+        if state['counts'][ip] >= THRESHOLD and ip not in state.get('blocked', []):
+            block_ip(ip)
+            state.setdefault('blocked', []).append(ip)
     save_state(state)
 
 
