@@ -7,6 +7,9 @@ SCRIPT_DIR="$(dirname "$0")"
 OUTPUT_DIR="/home/kali/Desktop/initial network discovery"
 mkdir -p "$OUTPUT_DIR"
 
+INBOUND_PORT=${INBOUND_PORT:-5775}
+OUTBOUND_PORT=${OUTBOUND_PORT:-7557}
+
 # Determine local network range
 NET_RANGE=$(ip -o -f inet addr show | awk '/scope global/ {print $4}' | head -n1)
 
@@ -45,6 +48,10 @@ df -h > "$OUTPUT_DIR/disk_usage.txt"
 free -h > "$OUTPUT_DIR/memory_usage.txt"
 ps aux > "$OUTPUT_DIR/running_processes.txt"
 command -v hostnamectl >/dev/null 2>&1 && hostnamectl > "$OUTPUT_DIR/hostnamectl.txt"
+
+# Verify enforced port separation on localhost
+nmap -Pn -p "$INBOUND_PORT","$OUTBOUND_PORT" localhost \
+    -oN "$OUTPUT_DIR/port_separation.txt"
 
 # Generate visualization report
 if command -v python3 >/dev/null 2>&1; then

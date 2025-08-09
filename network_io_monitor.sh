@@ -1,4 +1,10 @@
 #!/bin/bash
+# network_io_monitor.sh - enforce separate inbound/outbound ports and log traffic
+set -euo pipefail
+
+INBOUND_PORT=${INBOUND_PORT:-5775}
+OUTBOUND_PORT=${OUTBOUND_PORT:-7557}
+
 # network_io_monitor.sh - set up iptables logging for inbound/outbound traffic
 set -euo pipefail
 
@@ -12,6 +18,15 @@ if ! iptables -C OUTPUT -j OUTLOG >/dev/null 2>&1; then
     iptables -A OUTPUT -j OUTLOG
 fi
 iptables -F INLOG
+iptables -A INLOG -p tcp --dport "$INBOUND_PORT" -m limit --limit 5/min \
+    -j LOG --log-prefix "INBOUND: " --log-level 4
+iptables -A INLOG -p tcp --dport "$INBOUND_PORT" -j RETURN
+iptables -A INLOG -j DROP
+iptables -F OUTLOG
+iptables -A OUTLOG -p tcp --sport "$OUTBOUND_PORT" -m limit --limit 5/min \
+    -j LOG --log-prefix "OUTBOUND: " --log-level 4
+iptables -A OUTLOG -p tcp --sport "$OUTBOUND_PORT" -j RETURN
+iptables -A OUTLOG -j DROP
 iptables -A INLOG -m limit --limit 5/min -j LOG --log-prefix "INBOUND: " --log-level 4
 iptables -A INLOG -j RETURN
 iptables -F OUTLOG
@@ -28,6 +43,15 @@ if ! ip6tables -C OUTPUT -j OUTLOG >/dev/null 2>&1; then
     ip6tables -A OUTPUT -j OUTLOG
 fi
 ip6tables -F INLOG
+ip6tables -A INLOG -p tcp --dport "$INBOUND_PORT" -m limit --limit 5/min \
+    -j LOG --log-prefix "INBOUND6: " --log-level 4
+ip6tables -A INLOG -p tcp --dport "$INBOUND_PORT" -j RETURN
+ip6tables -A INLOG -j DROP
+ip6tables -F OUTLOG
+ip6tables -A OUTLOG -p tcp --sport "$OUTBOUND_PORT" -m limit --limit 5/min \
+    -j LOG --log-prefix "OUTBOUND6: " --log-level 4
+ip6tables -A OUTLOG -p tcp --sport "$OUTBOUND_PORT" -j RETURN
+ip6tables -A OUTLOG -j DROP
 ip6tables -A INLOG -m limit --limit 5/min -j LOG --log-prefix "INBOUND6: " --log-level 4
 ip6tables -A INLOG -j RETURN
 ip6tables -F OUTLOG

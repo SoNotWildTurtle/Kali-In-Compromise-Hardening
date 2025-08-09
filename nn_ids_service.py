@@ -11,7 +11,6 @@ MODEL_PATH = "/opt/nnids/ids_model.pkl"
 NOTIFY_ENABLED = os.getenv("NN_IDS_NOTIFY", "1") == "1"
 DISCOVERY_MODE = os.getenv("NN_IDS_DISCOVERY_MODE", "auto")
 
-
 MODEL_PATH = "/opt/nnids/ids_model.pkl"
 
 try:

@@ -71,6 +71,9 @@ Key objectives:
 - **Scheduled Security Scans**: Daily `lynis` and `rkhunter` checks are configured via cron.
 - **Wiper and Malware Protection**: ClamAV runs daily scans, critical system files are backed up and locked with immutable attributes, and an inotify-based monitor watches for deletion attempts to thwart destructive wipers.
 - **MAC Address Randomization**: The primary network interface receives a new MAC on each boot.
+- **Port-Separated Network I/O Logging**: All inbound traffic is forced through port 5775 and outbound traffic through port 7557, with each direction logged from the first boot for review.
+- **Internet Connectivity Guard**: A periodic check keeps outbound access open, enforces the dedicated 5775/7557 port split, and restores networking if connectivity is lost, activating SD-WAN, Cisco, or VMware interfaces to maintain at least one active link.
+- **Initial Network Discovery**: After hardening completes, a one-time sweep leverages `nmap`, `netdiscover`, `arp-scan`, `nbtscan`, `dnsrecon`, and optional `whatweb`/`enum4linux` probes to profile local hosts, services, DNS/NetBIOS data, and web fingerprints, saving logs and an HTML visualization to `~/Desktop/initial network discovery`, including a verification that only ports 5775 and 7557 are reachable locally.
 - **Network I/O Logging**: Inbound and outbound traffic is logged from the first boot for review.
 - **Internet Connectivity Guard**: A periodic check keeps outbound access open and restores networking if connectivity is lost, activating SD-WAN, Cisco, or VMware interfaces to maintain at least one active link.
 - **Initial Network Discovery**: After hardening completes, a one-time sweep leverages `nmap`, `netdiscover`, `arp-scan`, `nbtscan`, `dnsrecon`, and optional `whatweb`/`enum4linux` probes to profile local hosts, services, DNS/NetBIOS data, and web fingerprints, saving logs and an HTML visualization to `~/Desktop/initial network discovery`.

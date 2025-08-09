@@ -6,6 +6,21 @@ LOG="/var/log/internet_access.log"
 mkdir -p "$(dirname "$LOG")"
 touch "$LOG"
 
+INBOUND_PORT=${INBOUND_PORT:-5775}
+OUTBOUND_PORT=${OUTBOUND_PORT:-7557}
+
+# Enforce inbound/outbound port separation
+iptables -nL INPUT_GUARD >/dev/null 2>&1 || iptables -N INPUT_GUARD
+iptables -nL OUTPUT_GUARD >/dev/null 2>&1 || iptables -N OUTPUT_GUARD
+iptables -C INPUT -j INPUT_GUARD >/dev/null 2>&1 || iptables -A INPUT -j INPUT_GUARD
+iptables -C OUTPUT -j OUTPUT_GUARD >/dev/null 2>&1 || iptables -A OUTPUT -j OUTPUT_GUARD
+iptables -F INPUT_GUARD
+iptables -A INPUT_GUARD -p tcp --dport "$INBOUND_PORT" -j ACCEPT
+iptables -A INPUT_GUARD -j DROP
+iptables -F OUTPUT_GUARD
+iptables -A OUTPUT_GUARD -p tcp --sport "$OUTBOUND_PORT" -j ACCEPT
+iptables -A OUTPUT_GUARD -j DROP
+
 # Ensure outbound traffic is permitted
 iptables -P OUTPUT ACCEPT
 iptables -C INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || \
