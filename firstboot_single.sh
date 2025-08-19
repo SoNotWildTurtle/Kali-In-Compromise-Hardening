@@ -136,37 +136,13 @@ if systemctl list-unit-files | grep -q '^internet_access_monitor.timer'; then
     systemctl start internet_access_monitor.timer
 fi
 
-# Wait for Windows host to become reachable before running host hardening
-HOST_IP="${HOST_IP:-192.168.1.100}"
-MAX_WAIT=300
-WAIT_INTERVAL=10
-TIME_PASSED=0
-echo "Waiting for Windows host $HOST_IP..."
-until ping -c1 "$HOST_IP" >/dev/null 2>&1; do
-    sleep "$WAIT_INTERVAL"
-    TIME_PASSED=$((TIME_PASSED + WAIT_INTERVAL))
-    if [ "$TIME_PASSED" -ge "$MAX_WAIT" ]; then
-        echo "Timeout waiting for $HOST_IP"
-        break
-    fi
-done
 
 
-if ping -c1 "$HOST_IP" >/dev/null 2>&1 && \
-   [ -x /usr/local/bin/host_hardening_windows.sh ]; then
-    /usr/local/bin/host_hardening_windows.sh
-fi
 
-if ping -c1 "$HOST_IP" >/dev/null 2>&1 && \
-   [ -x /usr/local/bin/host_hardening_linux.sh ]; then
+if [ -x /usr/local/bin/host_hardening_linux.sh ]; then
     /usr/local/bin/host_hardening_linux.sh
 fi
 
-# Apply additional VM hardening tailored for a Windows host environment
-# Apply additional VM hardening tailored for a Windows host environment
-if [ -x /usr/local/bin/vm_windows_env_hardening.sh ]; then
-    /usr/local/bin/vm_windows_env_hardening.sh
-fi
 
 if [ -x /usr/local/bin/vm_linux_env_hardening.sh ]; then
     /usr/local/bin/vm_linux_env_hardening.sh
