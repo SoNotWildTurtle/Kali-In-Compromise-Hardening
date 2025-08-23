@@ -1,0 +1,6 @@
+[Unit]
+Description=Block IPs from threat feeds
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/threat_feed_blocklist.py
