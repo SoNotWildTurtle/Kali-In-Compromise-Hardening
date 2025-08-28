@@ -1,0 +1,9 @@
+[Unit]
+Description=NN IDS Resource Monitor
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nn_ids_resource_monitor.py
+
+[Install]
+WantedBy=multi-user.target
