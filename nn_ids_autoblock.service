@@ -1,0 +1,6 @@
+[Unit]
+Description=Auto block IPs based on NN IDS alerts
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nn_ids_autoblock.py
