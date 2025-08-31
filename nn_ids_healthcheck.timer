@@ -1,0 +1,10 @@
+[Unit]
+Description=Run NN IDS health check periodically
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=30min
+Unit=nn_ids_healthcheck.service
+
+[Install]
+WantedBy=timers.target
