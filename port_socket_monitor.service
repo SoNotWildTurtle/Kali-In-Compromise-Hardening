@@ -1,0 +1,6 @@
+[Unit]
+Description=Monitor listening ports for anomalies
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/port_socket_monitor.py
