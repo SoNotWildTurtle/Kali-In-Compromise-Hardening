@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+"""nn_ids_service.py - Monitor network traffic and alert based on NN model."""
+import joblib
+from scapy.all import sniff, IP, TCP
+from collections import defaultdict
+import os
+import subprocess
+
+MODEL_PATH = "/opt/nnids/ids_model.pkl"
+
+NOTIFY_ENABLED = os.getenv("NN_IDS_NOTIFY", "1") == "1"
+DISCOVERY_MODE = os.getenv("NN_IDS_DISCOVERY_MODE", "auto")
+
+try:
+    clf = joblib.load(MODEL_PATH)
+except Exception:
+    clf = None
+
+benign_counts = defaultdict(int)
+
+
+def extract_features(pkt):
+    if IP in pkt and TCP in pkt:
+        return [pkt[IP].len, pkt[IP].ttl, pkt[TCP].dport, int(pkt[TCP].flags)]
+    return None
+
+
+def explain(feats):
+    length, ttl, dport, flags = feats
+    reasons = []
+    if ttl <= 1:
+        reasons.append("TTL indicates potential spoofing")
+    if dport in {0, 31337}:
+        reasons.append(f"target port {dport} is suspicious")
+    if flags == 0x3F:
+        reasons.append("all TCP flags set (Xmas scan)")
+    if flags & 0x01 and dport == 443 and length < 100:
+        reasons.append("small FIN packet on TLS port")
+    return "; ".join(reasons) or "unknown pattern"
+
+
+def analyze(pkt):
+    if clf is None:
+        return
+    feats = extract_features(pkt)
+    if feats:
+        prob = clf.predict_proba([feats])[0][1]
+        pred = int(prob >= 0.5)
+        key = tuple(feats)
+        if pred == 1:
+            reason = explain(feats)
+            message = f"Threat ({prob:.2f}): {pkt.summary()} Reason: {reason}"
+            with open('/var/log/nn_ids_alerts.log', 'a') as f:
+                if prob >= 0.8:
+                    f.write(f'High confidence {message}\n')
+                else:
+                    f.write(f'Low confidence {message}\n')
+            if NOTIFY_ENABLED:
+                subprocess.run(["wall", message], check=False)
+            if DISCOVERY_MODE == "auto":
+                subprocess.Popen(["/usr/local/bin/network_discovery.sh"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            elif DISCOVERY_MODE == "manual" and NOTIFY_ENABLED:
+                subprocess.run(["wall", "Run /usr/local/bin/network_discovery.sh for details"], check=False)
+            elif DISCOVERY_MODE == "notify" and NOTIFY_ENABLED:
+                subprocess.run(["wall", "Malicious traffic detected"], check=False)
+            benign_counts.pop(key, None)
+        else:
+            benign_counts[key] += 1
+            if benign_counts[key] > 10:
+                with open('/var/log/nn_ids_alerts.log', 'a') as f:
+                    f.write(f'Possible desensitization attempt: {pkt.summary()}\n')
+                benign_counts[key] = 0
+        if len(benign_counts) > 1000:
+            benign_counts.clear()
+
+
+def main():
+    sniff(prn=analyze, store=0)
+
+
+if __name__ == '__main__':
+    main()
