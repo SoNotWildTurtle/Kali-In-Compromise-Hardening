@@ -1,0 +1,11 @@
+[Unit]
+Description=Download datasets and train NN IDS
+After=network.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/nn_ids.conf
+ExecStart=/usr/local/bin/setup_nn_ids.sh
+
+[Install]
+WantedBy=multi-user.target
