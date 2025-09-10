@@ -1,0 +1,10 @@
+[Unit]
+Description=Run process monitor every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=process_monitor.service
+
+[Install]
+WantedBy=timers.target
