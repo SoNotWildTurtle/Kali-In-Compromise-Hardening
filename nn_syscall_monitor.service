@@ -1,0 +1,14 @@
+[Unit]
+Description=GA Tech system call monitor
+After=network.target auditd.service
+ConditionPathExists=/usr/local/bin/nn_syscall_monitor.py
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/nn_ids.conf
+ExecStart=/usr/bin/env python3 /usr/local/bin/nn_syscall_monitor.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
