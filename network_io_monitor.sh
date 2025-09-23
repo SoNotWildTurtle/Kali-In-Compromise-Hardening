@@ -1,0 +1,75 @@
+#!/bin/bash
+# network_io_monitor.sh - enforce separate inbound/outbound ports and log traffic
+set -euo pipefail
+
+INBOUND_PORT=${INBOUND_PORT:-5775}
+OUTBOUND_PORT=${OUTBOUND_PORT:-7557}
+
+# IPv4 chains
+iptables -nL INLOG >/dev/null 2>&1 || iptables -N INLOG
+iptables -nL OUTLOG >/dev/null 2>&1 || iptables -N OUTLOG
+if ! iptables -C INPUT -j INLOG >/dev/null 2>&1; then
+    iptables -A INPUT -j INLOG
+fi
+if ! iptables -C OUTPUT -j OUTLOG >/dev/null 2>&1; then
+    iptables -A OUTPUT -j OUTLOG
+fi
+iptables -F INLOG
+iptables -A INLOG -p tcp --dport "$INBOUND_PORT" -m limit --limit 5/min \
+    -j LOG --log-prefix "INBOUND: " --log-level 4
+iptables -A INLOG -p tcp --dport "$INBOUND_PORT" -j RETURN
+iptables -A INLOG -j DROP
+iptables -F OUTLOG
+iptables -A OUTLOG -p tcp --sport "$OUTBOUND_PORT" -m limit --limit 5/min \
+    -j LOG --log-prefix "OUTBOUND: " --log-level 4
+iptables -A OUTLOG -p tcp --sport "$OUTBOUND_PORT" -j RETURN
+iptables -A OUTLOG -j DROP
+
+# IPv6 chains
+ip6tables -nL INLOG >/dev/null 2>&1 || ip6tables -N INLOG
+ip6tables -nL OUTLOG >/dev/null 2>&1 || ip6tables -N OUTLOG
+if ! ip6tables -C INPUT -j INLOG >/dev/null 2>&1; then
+    ip6tables -A INPUT -j INLOG
+fi
+if ! ip6tables -C OUTPUT -j OUTLOG >/dev/null 2>&1; then
+    ip6tables -A OUTPUT -j OUTLOG
+fi
+ip6tables -F INLOG
+ip6tables -A INLOG -p tcp --dport "$INBOUND_PORT" -m limit --limit 5/min \
+    -j LOG --log-prefix "INBOUND6: " --log-level 4
+ip6tables -A INLOG -p tcp --dport "$INBOUND_PORT" -j RETURN
+ip6tables -A INLOG -j DROP
+ip6tables -F OUTLOG
+ip6tables -A OUTLOG -p tcp --sport "$OUTBOUND_PORT" -m limit --limit 5/min \
+    -j LOG --log-prefix "OUTBOUND6: " --log-level 4
+ip6tables -A OUTLOG -p tcp --sport "$OUTBOUND_PORT" -j RETURN
+ip6tables -A OUTLOG -j DROP
+
+# rsyslog rules
+RSYSLOG_RULES=/etc/rsyslog.d/20-iptables.conf
+if ! grep -q INBOUND "$RSYSLOG_RULES" 2>/dev/null; then
+cat <<'RSYS' > "$RSYSLOG_RULES"
+:msg, contains, "INBOUND: " /var/log/inbound.log
+:msg, contains, "OUTBOUND: " /var/log/outbound.log
+:msg, contains, "INBOUND6: " /var/log/inbound6.log
+:msg, contains, "OUTBOUND6: " /var/log/outbound6.log
+& stop
+RSYS
+    systemctl restart rsyslog
+fi
+
+LOGROTATE_CONF=/etc/logrotate.d/network_io
+if [ ! -f "$LOGROTATE_CONF" ]; then
+cat <<'ROT' > "$LOGROTATE_CONF"
+/var/log/inbound.log /var/log/outbound.log /var/log/inbound6.log /var/log/outbound6.log {
+    rotate 7
+    daily
+    missingok
+    notifempty
+    compress
+    delaycompress
+}
+ROT
+fi
+
+echo "Network I/O monitoring enabled"

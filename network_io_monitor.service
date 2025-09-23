@@ -1,0 +1,10 @@
+[Unit]
+Description=Configure network IO monitoring
+After=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/network_io_monitor.sh
+
+[Install]
+WantedBy=multi-user.target
