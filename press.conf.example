@@ -1,0 +1,10 @@
+# Example configuration for full_automation_setup.sh
+# Use with: sudo ./full_automation_setup.sh -c press.conf
+# The helper can also create this file after an interactive run.
+MODE=installer
+OUT_ISO=$(pwd)/kali-custom.iso
+WORKDIR=/tmp/kali-auto-build
+KALI_USER=kaliuser
+KALI_PASS=changeme
+GUEST_USER=guest
+GUEST_PASS=guest
