@@ -1,0 +1,10 @@
+[Unit]
+Description=Run IDS dataset sanitization periodically
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+Unit=nn_ids_sanitize.service
+
+[Install]
+WantedBy=timers.target
