@@ -1,0 +1,6 @@
+[Unit]
+Description=Snapshot NN IDS model and data
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nn_ids_snapshot.py
