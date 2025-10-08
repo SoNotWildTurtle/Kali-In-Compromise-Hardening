@@ -1,0 +1,11 @@
+[Unit]
+Description=Randomize MAC address at boot
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mac_randomizer.sh
+
+[Install]
+WantedBy=multi-user.target

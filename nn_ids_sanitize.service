@@ -1,0 +1,10 @@
+[Unit]
+Description=Sanitize IDS datasets
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/nn_ids.conf
+ExecStart=/usr/local/bin/nn_ids_sanitize.py
+
+[Install]
+WantedBy=multi-user.target

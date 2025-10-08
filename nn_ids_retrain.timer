@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic NN IDS retraining
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1d
+Unit=nn_ids_retrain.service
+
+[Install]
+WantedBy=timers.target

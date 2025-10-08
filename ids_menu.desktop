@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=IDS Control Menu
+Comment=Configure IDS settings and view network discovery
+Exec=x-terminal-emulator -e /usr/local/bin/ids_menu.sh
+Icon=utilities-terminal
+Terminal=false
+Type=Application
+Categories=Utility;Security;
+

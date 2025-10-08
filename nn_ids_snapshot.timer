@@ -1,0 +1,9 @@
+[Unit]
+Description=Run NN IDS snapshot daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

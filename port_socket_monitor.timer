@@ -1,0 +1,10 @@
+[Unit]
+Description=Run port socket monitor every 5 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+Unit=port_socket_monitor.service
+
+[Install]
+WantedBy=multi-user.target
