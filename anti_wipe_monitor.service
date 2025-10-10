@@ -1,0 +1,10 @@
+[Unit]
+Description=Monitor critical files for wipe attempts
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/anti_wipe_monitor.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

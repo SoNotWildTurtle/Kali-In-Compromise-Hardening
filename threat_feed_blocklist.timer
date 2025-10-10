@@ -1,0 +1,10 @@
+[Unit]
+Description=Update threat feed IP blocklist daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+Unit=threat_feed_blocklist.service
+
+[Install]
+WantedBy=timers.target

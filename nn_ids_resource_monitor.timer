@@ -1,0 +1,10 @@
+[Unit]
+Description=Run NN IDS resource monitor every 5 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+Unit=nn_ids_resource_monitor.service
+
+[Install]
+WantedBy=timers.target

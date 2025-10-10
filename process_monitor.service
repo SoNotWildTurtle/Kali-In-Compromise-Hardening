@@ -1,0 +1,9 @@
+[Unit]
+Description=Process and Service Monitor
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/process_service_monitor.py
+
+[Install]
+WantedBy=multi-user.target

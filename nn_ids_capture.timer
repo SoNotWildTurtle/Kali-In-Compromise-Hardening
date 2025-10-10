@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodically capture packets for NN IDS training
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+Unit=nn_ids_capture.service
+
+[Install]
+WantedBy=timers.target

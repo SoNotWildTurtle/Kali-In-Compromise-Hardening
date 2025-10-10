@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=IDS Graphical Dashboard
+Comment=Launch the curses-based IDS analytics dashboard
+Exec=x-terminal-emulator -e /usr/local/bin/ids_dashboard_gui.py
+Icon=utilities-terminal
+Terminal=false
+Type=Application
+Categories=Utility;Security;

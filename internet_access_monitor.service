@@ -1,0 +1,11 @@
+[Unit]
+Description=Ensure internet connectivity
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/internet_access_monitor.sh
+
+[Install]
+WantedBy=multi-user.target

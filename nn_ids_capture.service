@@ -1,0 +1,11 @@
+[Unit]
+Description=Capture packets for NN IDS training
+After=network.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/nn_ids.conf
+ExecStart=/usr/bin/python3 /usr/local/bin/nn_ids_capture.py
+
+[Install]
+WantedBy=multi-user.target
