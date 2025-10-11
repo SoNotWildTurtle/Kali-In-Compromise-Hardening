@@ -24,6 +24,7 @@ CONFIG_CANDIDATES = [
     Path(__file__).resolve().parent / "nn_ids.conf",
 ]
 INCIDENT_REPORT = Path("/var/log/nn_ids/incident_response_report.md")
+HEALTH_LOG = Path("/var/log/nn_ids_health.log")
 DEFAULT_LOGS: Dict[str, Path] = {
     "alerts": Path("/var/log/nn_ids_alerts.log"),
     "process": Path("/var/log/process_monitor_alerts.log"),
@@ -31,6 +32,7 @@ DEFAULT_LOGS: Dict[str, Path] = {
     "ga_syscall": Path("/var/log/ga_tech_sys_alerts.log"),
     "threat_feed": Path("/var/log/threat_feed_blocklist.log"),
     "resource": Path("/var/log/nn_ids_resource_monitor.log"),
+    "health": HEALTH_LOG,
     "network_in": Path("/var/log/inbound_traffic.log"),
     "network_out": Path("/var/log/outbound_traffic.log"),
     "anti_wipe": Path("/var/log/anti_wipe_monitor.log"),
@@ -232,6 +234,15 @@ def run_script_action(
     return f"Executed {Path(script).name}"
 
 
+def run_healthcheck(stdscr: "curses._CursesWindow") -> str:
+    return run_script_action(
+        stdscr,
+        "nn_ids_healthcheck.py",
+        ["--verbose", "--no-restart"],
+        python=True,
+    )
+
+
 def find_script(name: str) -> Optional[str]:
     system_path = Path("/usr/local/bin") / name
     if system_path.exists():
@@ -414,6 +425,32 @@ def format_summary(stats: Dict) -> List[str]:
     return lines
 
 
+def format_operational_counters(stats: Dict) -> List[str]:
+    def fmt(value) -> str:
+        if isinstance(value, (int, float)):
+            return _format_number(value)
+        if value is None:
+            return "unknown"
+        return str(value)
+
+    counters = [
+        ("Alerts last hour", stats.get("alerts_last_hour")),
+        ("Current minute", stats.get("alerts_current_minute")),
+        ("Zero-day alerts", stats.get("zero_day_alerts")),
+        ("Current high streak", stats.get("current_high_streak")),
+        ("Current low streak", stats.get("current_low_streak")),
+        ("Longest high streak", stats.get("longest_high_streak")),
+        ("Longest low streak", stats.get("longest_low_streak")),
+        ("Peak minute count", stats.get("peak_minute_count")),
+    ]
+
+    lines = [f"{label}: {fmt(value)}" for label, value in counters]
+    peak_label = stats.get("peak_minute_label")
+    if isinstance(peak_label, str) and peak_label:
+        lines.append(f"Peak minute label: {peak_label}")
+    return lines
+
+
 def format_watchlists(stats: Dict, compact: bool = True) -> List[str]:
     entries = [
         ("Campaign watchlist", stats.get("campaign_watchlist")),
@@ -469,6 +506,47 @@ def format_distributions(stats: Dict) -> List[str]:
     return distributions
 
 
+def format_health_log_summary() -> List[str]:
+    if not HEALTH_LOG.exists():
+        return ["Health check log not found."]
+    try:
+        lines = HEALTH_LOG.read_text().splitlines()
+    except OSError as exc:
+        return [f"Failed to read {HEALTH_LOG}: {exc}"]
+    if not lines:
+        return ["Health check log is empty."]
+
+    last_run: Optional[str] = None
+    last_failure: Optional[str] = None
+    for line in reversed(lines):
+        if "Health check" not in line:
+            continue
+        if last_run is None:
+            last_run = line
+        if last_failure is None and "FAIL" in line.upper():
+            last_failure = line
+        if last_run and last_failure:
+            break
+
+    summary: List[str] = []
+    summary.append(last_run or "No health check summary entries yet.")
+    if last_failure and last_failure != last_run:
+        summary.append(f"Last failure: {last_failure}")
+    return summary
+
+
+def format_health_log_tail(limit: int = 10) -> List[str]:
+    if not HEALTH_LOG.exists():
+        return ["Health check log not found."]
+    try:
+        lines = HEALTH_LOG.read_text().splitlines()
+    except OSError as exc:
+        return [f"Failed to read {HEALTH_LOG}: {exc}"]
+    if not lines:
+        return ["Health check log is empty."]
+    return lines[-limit:]
+
+
 def format_logs() -> List[str]:
     lines: List[str] = []
     for label, path in DEFAULT_LOGS.items():
@@ -511,6 +589,9 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
     distributions = format_distributions(stats)
     recent_alerts = format_recent_alerts(stats)
     logs = format_logs()
+    operational_counters = format_operational_counters(stats)
+    health_summary = format_health_log_summary()
+    health_tail = format_health_log_tail()
 
     summary_view = [
         ("Service Status", services),
@@ -562,11 +643,26 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
         ]),
     ]
 
+    maintenance_view = [
+        ("Operational Counters", operational_counters),
+        ("Health Check Summary", health_summary),
+        ("Recent Health Log Entries", health_tail),
+        (
+            "Maintenance Tips",
+            [
+                "Press V to run a health check without restarting services.",
+                "Press J to inspect the full health check log.",
+                "Use [?] for additional maintenance automation shortcuts.",
+            ],
+        ),
+    ]
+
     return [
         ("Summary", summary_view),
         ("Analytics", analytics_view),
         ("Timeline", timeline_view),
         ("Operations", operations_view),
+        ("Maintenance", maintenance_view),
     ]
 
 
@@ -724,6 +820,7 @@ def main(stdscr: "curses._CursesWindow") -> None:
             ("g", ("View GA Tech process log", lambda: open_log(stdscr, DEFAULT_LOGS["ga_process"]))),
             ("s", ("View GA Tech syscall log", lambda: open_log(stdscr, DEFAULT_LOGS["ga_syscall"]))),
             ("t", ("View threat feed log", lambda: open_log(stdscr, DEFAULT_LOGS["threat_feed"]))),
+            ("j", ("View health check log", lambda: open_log(stdscr, HEALTH_LOG))),
             ("l", ("View incident analytics log", lambda: open_log(stdscr, DEFAULT_LOGS["incident"]))),
             ("c", ("Open nn_ids.conf", lambda: open_config(stdscr))),
             ("n", ("Toggle notifications", lambda: toggle_config_bool("NN_IDS_NOTIFY"))),
@@ -733,6 +830,7 @@ def main(stdscr: "curses._CursesWindow") -> None:
             ("f", ("Toggle threat feed", lambda: toggle_config_bool("NN_IDS_THREAT_FEED"))),
             ("h", ("Set alert threshold", lambda: set_threshold(stdscr))),
             ("d", ("Run network discovery", lambda: run_script_action(stdscr, "network_discovery.sh"))),
+            ("v", ("Run health check", lambda: run_healthcheck(stdscr))),
             ("x", ("Trigger IDS retrain", lambda: call_systemctl("nn_ids_retrain.service"))),
             ("u", ("Run dataset sanitization", lambda: call_systemctl("nn_ids_sanitize.service"))),
             ("k", ("Update threat feed", lambda: call_systemctl("threat_feed_blocklist.service"))),
@@ -768,7 +866,7 @@ def main(stdscr: "curses._CursesWindow") -> None:
                 max_x - 1,
                 curses.A_REVERSE,
             )
-        hint = "[Tab] Switch view  [?] Actions  [R] Refresh  [Q] Quit"
+        hint = "[Tab] Switch view  [?] Actions  [V] Health check  [J] Health log  [R] Refresh  [Q] Quit"
         stdscr.addnstr(
             max_y - 1,
             0,
@@ -787,7 +885,7 @@ def main(stdscr: "curses._CursesWindow") -> None:
             view_index = (view_index + 1) % len(views)
             status_message = f"Switched to {views[view_index][0]} view"
             continue
-        if ch in (ord("1"), ord("2"), ord("3"), ord("4")):
+        if ord("1") <= ch <= ord("9"):
             numeric = ch - ord("1")
             if 0 <= numeric < len(views):
                 view_index = numeric
