@@ -43,6 +43,7 @@ DEFAULT_LOGS: Dict[str, Path] = {
 RECENT_ALERT_MAX_ENTRIES = 512
 MINUTE_FORMAT = "%Y-%m-%dT%H:%MZ"
 PROBABILITY_BUCKET_TOLERANCE = 1e-6
+CLOCK_SKEW_TOLERANCE = timedelta(seconds=60)
 
 SERVICES: Sequence[Tuple[str, str]] = (
     ("nn_ids.service", "Neural IDS"),
@@ -621,15 +622,25 @@ def analyze_probability_coverage(stats: Dict) -> List[str]:
     if parsed[-1][1] < 1.0 - PROBABILITY_BUCKET_TOLERANCE:
         lines.append("⚠ Coverage stops before 1.0 — high probabilities trimmed.")
 
-    previous_upper = 0.0
+    previous_upper: Optional[float] = None
+    previous_label: Optional[str] = None
     overlaps = False
+    gaps = False
     for lower, upper, label, _ in parsed:
-        if lower + PROBABILITY_BUCKET_TOLERANCE < previous_upper:
-            lines.append(f"⚠ Bucket {label} overlaps with an earlier range.")
-            overlaps = True
-        previous_upper = max(previous_upper, upper)
-    if not overlaps and len(lines) == 1:
-        lines.append("Probability bucket ranges appear ordered and non-overlapping.")
+        if previous_upper is not None:
+            if lower - PROBABILITY_BUCKET_TOLERANCE > previous_upper:
+                lines.append(
+                    f"⚠ Gap between {previous_label or 'previous bucket'} and {label}"
+                    f" leaves {previous_upper:.2f}–{lower:.2f} uncovered."
+                )
+                gaps = True
+            if lower + PROBABILITY_BUCKET_TOLERANCE < previous_upper:
+                lines.append(f"⚠ Bucket {label} overlaps with an earlier range.")
+                overlaps = True
+        previous_upper = upper
+        previous_label = label
+    if not overlaps and not gaps and len(lines) == 1:
+        lines.append("Probability bucket ranges appear ordered, gap-free, and non-overlapping.")
 
     last_prob = stats.get("last_probability")
     latest_probability: Optional[float] = None
@@ -739,6 +750,70 @@ def summarize_recent_alignment(stats: Dict) -> List[str]:
     return lines
 
 
+def analyze_timeline_integrity(stats: Dict) -> List[str]:
+    now = datetime.now(timezone.utc)
+    lines: List[str] = []
+
+    last_alert_dt = _coerce_datetime(stats.get("last_alert"))
+    if last_alert_dt is None:
+        lines.append("last_alert timestamp unavailable for timeline assessment.")
+    else:
+        if last_alert_dt > now + CLOCK_SKEW_TOLERANCE:
+            skew = last_alert_dt - now
+            lines.append(
+                f"⚠ last_alert timestamp leads system clock by {_format_duration(skew)}; investigate NTP or clock drift."
+            )
+        else:
+            age = now - last_alert_dt
+            lines.append(f"Last alert recorded {_format_duration(age)} ago (within tolerance).")
+
+    entries = stats.get("recent_alerts")
+    if not isinstance(entries, list) or not entries:
+        lines.append("No recent alerts to evaluate chronological ordering.")
+        return lines
+
+    misordered = 0
+    future_entries = 0
+    max_future_skew = timedelta(0)
+    previous_timestamp: Optional[datetime] = None
+    counted_entries = 0
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        timestamp = _coerce_datetime(entry.get("time"))
+        if timestamp is None:
+            continue
+        counted_entries += 1
+        if timestamp > now + CLOCK_SKEW_TOLERANCE:
+            future_entries += 1
+            skew = timestamp - now
+            if skew > max_future_skew:
+                max_future_skew = skew
+        if previous_timestamp is not None and timestamp < previous_timestamp:
+            misordered += 1
+        if previous_timestamp is None or timestamp >= previous_timestamp:
+            previous_timestamp = timestamp
+
+    if counted_entries == 0:
+        lines.append("No timestamped entries present in recent_alerts.")
+        return lines
+
+    if future_entries:
+        suffix = "y" if future_entries == 1 else "ies"
+        lines.append(
+            f"⚠ {future_entries} timeline entr{suffix} appear up to {_format_duration(max_future_skew)} ahead of the system clock."
+        )
+    if misordered:
+        suffix = "y" if misordered == 1 else "ies"
+        lines.append(
+            f"⚠ Recent alerts not strictly chronological ({misordered} out-of-order entr{suffix})."
+        )
+    if not future_entries and not misordered:
+        lines.append("Recent alerts appear chronological and clock-aligned within tolerance.")
+
+    return lines
+
+
 def collect_integrity_alerts(stats: Dict) -> List[str]:
     if not isinstance(stats, dict) or not stats:
         return [
@@ -746,6 +821,7 @@ def collect_integrity_alerts(stats: Dict) -> List[str]:
         ]
 
     alerts: List[str] = []
+    now = datetime.now(timezone.utc)
 
     def flag(message: str) -> None:
         alerts.append(f"⚠ {message}")
@@ -789,14 +865,43 @@ def collect_integrity_alerts(stats: Dict) -> List[str]:
     elif recent is not None and not isinstance(recent, list):
         flag("recent_alerts field is not a list; telemetry JSON corrupted?")
 
+    future_alerts = 0
+    max_skew = timedelta(0)
+    previous_timestamp: Optional[datetime] = None
+    if isinstance(recent, list):
+        for entry in recent:
+            if not isinstance(entry, dict):
+                continue
+            timestamp = _coerce_datetime(entry.get("time"))
+            if timestamp is None:
+                continue
+            if timestamp > now + CLOCK_SKEW_TOLERANCE:
+                future_alerts += 1
+                skew = timestamp - now
+                if skew > max_skew:
+                    max_skew = skew
+            if previous_timestamp is not None and timestamp < previous_timestamp:
+                flag("recent_alerts timeline appears out of order; verify telemetry writer.")
+            if previous_timestamp is None or timestamp >= previous_timestamp:
+                previous_timestamp = timestamp
+    if future_alerts:
+        flag(
+            f"{future_alerts} recent alert(s) are timestamped up to {_format_duration(max_skew)} ahead of the system clock."
+        )
+
     last_alert_dt = _coerce_datetime(stats.get("last_alert"))
     if total_value and last_alert_dt is None:
         flag("Alerts recorded but last_alert timestamp missing or invalid.")
     if last_alert_dt is not None:
-        age = datetime.now(timezone.utc) - last_alert_dt
+        age = now - last_alert_dt
         if age > timedelta(hours=1):
             flag(
                 f"Last alert observed {_format_duration(age)} ago; capture pipeline may be stalled."
+            )
+        if last_alert_dt > now + CLOCK_SKEW_TOLERANCE:
+            skew = last_alert_dt - now
+            flag(
+                f"last_alert timestamp is {_format_duration(skew)} ahead of system clock — check NTP."
             )
 
     alerts_last_hour = stats.get("alerts_last_hour")
@@ -893,11 +998,19 @@ def collect_integrity_alerts(stats: Dict) -> List[str]:
                 flag("Probability buckets skip the lowest probability range.")
             if parsed[-1][1] < 1.0 - PROBABILITY_BUCKET_TOLERANCE:
                 flag("Probability buckets do not extend to 1.0; high-confidence data trimmed.")
-            previous_upper = 0.0
+            previous_upper: Optional[float] = None
+            previous_label: Optional[str] = None
             for lower, upper, label, _ in parsed:
-                if lower + PROBABILITY_BUCKET_TOLERANCE < previous_upper:
-                    flag(f"Probability bucket {label} overlaps an earlier range.")
-                previous_upper = max(previous_upper, upper)
+                if previous_upper is not None:
+                    if lower - PROBABILITY_BUCKET_TOLERANCE > previous_upper:
+                        flag(
+                            f"Gap between {previous_label or 'previous bucket'} and {label} leaves"
+                            f" {previous_upper:.2f}–{lower:.2f} uncovered."
+                        )
+                    if lower + PROBABILITY_BUCKET_TOLERANCE < previous_upper:
+                        flag(f"Probability bucket {label} overlaps an earlier range.")
+                previous_upper = upper
+                previous_label = label
 
             if probability_to_check is not None:
                 match = next(
@@ -1055,6 +1168,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
     integrity_alerts = collect_integrity_alerts(stats)
     probability_coverage = analyze_probability_coverage(stats)
     recent_alignment = summarize_recent_alignment(stats)
+    timeline_integrity = analyze_timeline_integrity(stats)
     freshness = format_file_freshness(
         [
             ("Alert telemetry", ALERT_STATS),
@@ -1138,6 +1252,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
             "Resilience",
             [
                 ("Telemetry Integrity", integrity_alerts),
+                ("Timeline Integrity", timeline_integrity),
                 ("Probability Coverage", probability_coverage),
                 ("Recent Alert Alignment", recent_alignment),
                 ("File Freshness", freshness),

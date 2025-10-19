@@ -332,6 +332,8 @@ def _validate_counter_map(
 def _validate_recent_alerts(
     data: Dict[str, Any],
     logger: Callable[[str], None],
+    *,
+    now: datetime,
 ) -> Tuple[Optional[datetime], Optional[str], Optional[float], bool]:
     """Ensure recent alert entries are well-formed and return latest details."""
 
@@ -352,6 +354,7 @@ def _validate_recent_alerts(
     latest_timestamp: Optional[datetime] = None
     latest_reason: Optional[str] = None
     latest_probability: Optional[float] = None
+    previous_timestamp: Optional[datetime] = None
 
     for index, entry in enumerate(recent):
         if not isinstance(entry, dict):
@@ -366,6 +369,21 @@ def _validate_recent_alerts(
         if timestamp is None:
             logger(f"recent_alerts entry {index} has invalid or missing timestamp")
             healthy = False
+        else:
+            if timestamp > now + RECENT_ALERT_TOLERANCE:
+                skew = timestamp - now
+                logger(
+                    f"recent_alerts entry {index} timestamp {raw_time!r} appears"
+                    f" {_format_duration(skew)} ahead of system clock"
+                )
+                healthy = False
+            if previous_timestamp is not None and timestamp < previous_timestamp:
+                logger(
+                    f"recent_alerts entry {index} timestamp out of order; entries should be chronological"
+                )
+                healthy = False
+            if previous_timestamp is None or timestamp >= previous_timestamp:
+                previous_timestamp = timestamp
 
         for endpoint in ("src", "dst"):
             endpoint_value = entry.get(endpoint)
@@ -481,6 +499,14 @@ def check_alert_stats(
                 " review capture and inference pipeline"
             )
             healthy = False
+        if last_alert > now + RECENT_ALERT_TOLERANCE:
+            skew = last_alert - now
+            logger(
+                "last_alert timestamp is"
+                f" {_format_duration(skew)} ahead of system clock;"
+                " verify time synchronisation"
+            )
+            healthy = False
 
     last_probability, prob_ok = _validate_float_field(
         data,
@@ -530,7 +556,7 @@ def check_alert_stats(
         recent_reason,
         recent_probability,
         recent_ok,
-    ) = _validate_recent_alerts(data, logger)
+    ) = _validate_recent_alerts(data, logger, now=now)
     healthy = healthy and recent_ok
     if latest_recent_alert is not None:
         if last_alert is None:
@@ -979,15 +1005,25 @@ def check_alert_stats(
                 )
                 healthy = False
 
-            previous_upper = 0.0
+            previous_upper: Optional[float] = None
+            previous_label: Optional[str] = None
             for lower, upper, label, _ in parsed_ranges:
-                if lower + PROBABILITY_BUCKET_TOLERANCE < previous_upper:
-                    logger(
-                        f"Probability bucket {label} overlaps with a previous range;"
-                        " reducer bins misordered"
-                    )
-                    healthy = False
-                previous_upper = max(previous_upper, upper)
+                if previous_upper is not None:
+                    if lower - PROBABILITY_BUCKET_TOLERANCE > previous_upper:
+                        logger(
+                            "Probability buckets leave coverage gap between"
+                            f" {previous_label or 'previous bucket'} and {label};"
+                            f" coverage missing from {previous_upper:.2f} to {lower:.2f}"
+                        )
+                        healthy = False
+                    if lower + PROBABILITY_BUCKET_TOLERANCE < previous_upper:
+                        logger(
+                            f"Probability bucket {label} overlaps with a previous range;"
+                            " reducer bins misordered"
+                        )
+                        healthy = False
+                previous_upper = upper
+                previous_label = label
 
             if recent_probability is not None:
                 matched_label: Optional[str] = None
