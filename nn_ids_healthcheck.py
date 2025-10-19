@@ -182,6 +182,10 @@ LOGROTATE_REQUIRED_DIRECTIVES = {
     "delaycompress",
 }
 
+LOGROTATE_TIMER_UNIT = "logrotate.timer"
+LOGROTATE_SERVICE_UNIT = "logrotate.service"
+LOGROTATE_CRON_PATH = Path("/etc/cron.daily/logrotate")
+
 SYSTEMCTL_AVAILABLE = shutil.which("systemctl") is not None
 _SYSTEMCTL_WARNING_EMITTED = False
 
@@ -779,6 +783,105 @@ def _debug_logrotate_config(config_path: Path, logger: Callable[[str], None]) ->
         logger(f"logrotate debug reported error: {entry}")
 
     return not issues
+
+
+def _check_logrotate_scheduler(logger: Callable[[str], None]) -> bool:
+    """Ensure logrotate executes on a recurring schedule."""
+
+    healthy = True
+    timer_ok = False
+    cron_ok = False
+
+    if _systemctl_available(logger):
+        timer_info = query_unit_state(LOGROTATE_TIMER_UNIT)
+        if timer_info is None:
+            logger("Unable to query logrotate.timer state; systemctl show returned no data")
+        else:
+            load_state = (timer_info.load_state or "").lower()
+            unit_file_state = (timer_info.unit_file_state or "").lower()
+            status_text = format_unit_status(timer_info)
+            if load_state != "loaded":
+                healthy = False
+                if load_state == "not-found":
+                    logger(
+                        "logrotate.timer missing from systemd; install the logrotate package or deploy the unit file"
+                    )
+                elif load_state == "masked":
+                    logger("logrotate.timer is masked; run 'systemctl unmask logrotate.timer'")
+                else:
+                    detail = f" ({timer_info.detail})" if timer_info.detail else ""
+                    logger(
+                        f"logrotate.timer load state {load_state or 'unknown'}{detail}; investigate systemd configuration"
+                    )
+            elif unit_file_state == "masked":
+                healthy = False
+                logger("logrotate.timer unit file masked; run 'systemctl unmask logrotate.timer'")
+            else:
+                enabled, enable_state = unit_enabled(LOGROTATE_TIMER_UNIT)
+                enable_state = (enable_state or "").lower()
+                active_state = (timer_info.active_state or "").lower()
+                if active_state in {"active", "activating"} and (
+                    enabled or enable_state in UNIT_ALLOWED_ENABLE_STATES
+                ):
+                    timer_ok = True
+                    logger(
+                        f"logrotate.timer {status_text}; systemd will trigger scheduled rotations"
+                    )
+                    if enable_state and enable_state not in UNIT_AUTO_START_STATES:
+                        logger(
+                            f"logrotate.timer enabled state {enable_state}; confirm persistence across reboots"
+                        )
+                else:
+                    healthy = False
+                    logger(
+                        f"logrotate.timer {status_text}; run 'systemctl enable --now logrotate.timer' to schedule rotations"
+                    )
+
+        service_info = query_unit_state(LOGROTATE_SERVICE_UNIT)
+        if service_info is not None:
+            service_load = (service_info.load_state or "").lower()
+            if service_load == "masked":
+                healthy = False
+                logger("logrotate.service is masked; unmask it so the timer can launch rotations")
+            elif service_load == "not-found":
+                healthy = False
+                logger("logrotate.service missing; reinstall the logrotate package")
+
+    cron_path = LOGROTATE_CRON_PATH
+    if cron_path.exists():
+        if not _check_secure_path(cron_path, "Logrotate cron job", logger):
+            healthy = False
+        else:
+            try:
+                stat_result = cron_path.lstat()
+            except OSError as exc:
+                healthy = False
+                logger(f"Unable to stat logrotate cron job {cron_path}: {exc}")
+            else:
+                permissions = stat.S_IMODE(stat_result.st_mode)
+                if not permissions & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH):
+                    healthy = False
+                    logger(
+                        f"Logrotate cron job {cron_path} not executable; run 'chmod 755 {cron_path}'"
+                    )
+                else:
+                    cron_ok = True
+                    owner = _format_owner(stat_result.st_uid, stat_result.st_gid)
+                    mode_text = _format_mode(stat_result.st_mode)
+                    logger(
+                        f"Logrotate cron job {cron_path} executable ({owner} {mode_text}); cron.daily will trigger rotations"
+                    )
+    else:
+        if timer_ok:
+            logger(f"Logrotate cron job {cron_path} not present; relying on systemd timer")
+
+    if not timer_ok and not cron_ok:
+        healthy = False
+        logger(
+            "No logrotate scheduler detected; enable logrotate.timer or install /etc/cron.daily/logrotate"
+        )
+
+    return healthy
 
 
 def _parse_config_file(path: Path) -> Tuple[Dict[str, str], List[str], List[str]]:
@@ -2687,6 +2790,9 @@ def check_log_rotation(logger: Callable[[str], None]) -> bool:
         healthy = False
 
     if not _debug_logrotate_config(config_path, logger):
+        healthy = False
+
+    if not _check_logrotate_scheduler(logger):
         healthy = False
 
     if healthy:

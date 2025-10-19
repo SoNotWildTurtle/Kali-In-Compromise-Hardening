@@ -81,6 +81,9 @@ LOGROTATE_REQUIRED_DIRECTIVES = {
     "compress",
     "delaycompress",
 }
+LOGROTATE_TIMER_UNIT = "logrotate.timer"
+LOGROTATE_SERVICE_UNIT = "logrotate.service"
+LOGROTATE_CRON_PATH = Path("/etc/cron.daily/logrotate")
 RECENT_ALERT_MAX_ENTRIES = 512
 MINUTE_FORMAT = "%Y-%m-%dT%H:%MZ"
 PROBABILITY_BUCKET_TOLERANCE = 1e-6
@@ -1939,12 +1942,118 @@ def _summarize_logrotate_state(
     return lines
 
 
+def analyze_logrotate_scheduler() -> List[str]:
+    """Report how logrotate is scheduled to run automatically."""
+
+    lines: List[str] = []
+    timer_ok = False
+    cron_ok = False
+
+    systemctl_available = shutil.which("systemctl") is not None
+
+    if systemctl_available:
+        timer_info = _query_unit_state(LOGROTATE_TIMER_UNIT)
+        enable_state = _enablement_from_systemctl(LOGROTATE_TIMER_UNIT).lower()
+        status = _format_unit_status(timer_info)
+        load_state = timer_info.load_state.lower() if timer_info else "unknown"
+        unit_file_state = timer_info.unit_file_state.lower() if timer_info else ""
+
+        if timer_info is None:
+            lines.append("⚠ Unable to query logrotate.timer state via systemctl show.")
+        elif load_state != "loaded":
+            if load_state == "not-found":
+                lines.append(
+                    "⚠ logrotate.timer missing; reinstall the logrotate package to restore scheduled rotations."
+                )
+            elif load_state == "masked":
+                lines.append("⚠ logrotate.timer masked; run systemctl unmask logrotate.timer.")
+            else:
+                detail = f" ({timer_info.detail})" if timer_info and timer_info.detail else ""
+                lines.append(
+                    f"⚠ logrotate.timer load state {load_state or 'unknown'}{detail}; investigate systemd configuration."
+                )
+        elif unit_file_state == "masked":
+            lines.append("⚠ logrotate.timer unit file masked; run systemctl unmask logrotate.timer.")
+        else:
+            active_state = timer_info.active_state.lower() if timer_info.active_state else ""
+            if active_state in {"active", "activating"}:
+                if enable_state in ENABLEMENT_OK_STATES or enable_state in ENABLEMENT_ACCEPTABLE_STATES:
+                    descriptor = enable_state or "enabled"
+                    timer_ok = True
+                    lines.append(
+                        f"logrotate.timer {status}; systemd will trigger rotations ({descriptor})."
+                    )
+                else:
+                    lines.append(
+                        f"⚠ logrotate.timer {status} but not enabled for startup (state: {enable_state or 'disabled'}); "
+                        "run systemctl enable --now logrotate.timer."
+                    )
+            else:
+                lines.append(
+                    f"⚠ logrotate.timer {status}; start it with systemctl enable --now logrotate.timer."
+                )
+
+        service_info = _query_unit_state(LOGROTATE_SERVICE_UNIT)
+        if service_info is not None:
+            service_load = service_info.load_state.lower()
+            if service_load == "masked":
+                lines.append("⚠ logrotate.service masked; unmask it so the timer can launch rotations.")
+            elif service_load == "not-found":
+                lines.append("⚠ logrotate.service missing; reinstall the logrotate package.")
+    else:
+        lines.append("systemctl unavailable; relying on cron scheduling for logrotate.")
+
+    cron_path = LOGROTATE_CRON_PATH
+    if cron_path.exists():
+        try:
+            stat_result = cron_path.lstat()
+        except OSError as exc:
+            lines.append(f"⚠ Cron job {cron_path}: unable to stat ({exc}).")
+        else:
+            issues: List[str] = []
+            permissions = stat.S_IMODE(stat_result.st_mode)
+            if stat.S_ISLNK(stat_result.st_mode):
+                issues.append("is a symbolic link")
+            if permissions & stat.S_IWOTH:
+                issues.append("world-writable")
+            if permissions & stat.S_IWGRP:
+                issues.append("group-writable")
+            if not permissions & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH):
+                issues.append("not executable")
+            owner = _describe_owner(stat_result.st_uid, stat_result.st_gid)
+            mode_text = _format_mode(stat_result.st_mode)
+            if issues:
+                lines.append(
+                    f"⚠ Cron job {cron_path}: {'; '.join(issues)} ({owner} {mode_text})."
+                )
+            else:
+                cron_ok = True
+                lines.append(
+                    f"Cron job {cron_path}: executable ({owner} {mode_text}); cron.daily can trigger rotations."
+                )
+    else:
+        if timer_ok:
+            lines.append(f"Cron job {cron_path}: not installed — relying on logrotate.timer.")
+        elif systemctl_available:
+            lines.append(
+                f"⚠ Cron job {cron_path}: missing; enable logrotate.timer or install the cron script."
+            )
+
+    if not timer_ok and not cron_ok:
+        lines.append(
+            "⚠ No logrotate scheduler detected; enable logrotate.timer or deploy /etc/cron.daily/logrotate."
+        )
+
+    return lines
+
+
 def analyze_logrotate_config() -> List[str]:
     """Inspect logrotate configuration for IDS log coverage and hygiene."""
 
     lines: List[str] = []
     config_path = resolve_logrotate_path()
     candidate_text = ", ".join(str(path) for path in LOGROTATE_CANDIDATES[:-1])
+    scheduler_lines = analyze_logrotate_scheduler()
 
     if config_path is None:
         lines.append(
@@ -1954,6 +2063,7 @@ def analyze_logrotate_config() -> List[str]:
             lines.append(
                 "⚠ logrotate binary missing; install it to prevent unchecked log growth."
             )
+        lines.extend(scheduler_lines)
         return lines
 
     if config_path == LOGROTATE_SAMPLE:
@@ -1965,6 +2075,7 @@ def analyze_logrotate_config() -> List[str]:
             lines.append(
                 "⚠ logrotate binary missing; install it to prevent unchecked log growth."
             )
+        lines.extend(scheduler_lines)
         return lines
 
     if not shutil.which("logrotate"):
@@ -2170,6 +2281,7 @@ def analyze_logrotate_config() -> List[str]:
         lines.append("All monitored logs are protected by logrotate.")
 
     lines.extend(_summarize_logrotate_state(config_path, text, snapshots))
+    lines.extend(scheduler_lines)
 
     return lines
 
