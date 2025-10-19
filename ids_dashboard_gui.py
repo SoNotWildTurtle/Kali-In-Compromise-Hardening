@@ -27,6 +27,7 @@ ALERT_STATS = Path("/var/lib/nn_ids/alert_stats.json")
 MODEL_PATH = Path("/opt/nnids/ids_model.pkl")
 CONFIG_CANDIDATES = [
     Path("/etc/nn_ids.conf"),
+    Path("/opt/nnids/nn_ids.conf"),
     Path(__file__).resolve().parent / "nn_ids.conf",
 ]
 INCIDENT_REPORT = Path("/var/log/nn_ids/incident_response_report.md")
@@ -84,6 +85,20 @@ CONFIG_BOOL_KEYS = {
 }
 
 DISCOVERY_SEQUENCE = ["auto", "manual", "notify", "none"]
+
+CONFIG_FLOAT_FIELDS = {
+    "NN_IDS_THRESHOLD": ("Alert threshold", 0.0, 1.0),
+    "NN_SYS_THRESHOLD": ("Syscall threshold", 0.0, 1.0),
+    "GA_PROC_THRESHOLD": ("Process alert threshold", 0.0, 1.0),
+    "GA_PROC_MIN_RISK": ("Process minimum risk", 0.0, 1.0),
+}
+
+CONFIG_INT_FIELDS = {
+    "NN_SYS_WINDOW": ("Syscall evaluation window", 1, 4096),
+}
+
+CONFIG_DISCOVERY_KEY = "NN_IDS_DISCOVERY_MODE"
+CONFIG_DISCOVERY_MODES = {"auto", "manual", "notify", "none"}
 
 
 def _format_duration(delta: timedelta) -> str:
@@ -146,22 +161,57 @@ def load_json(path: Path) -> Dict:
     return {}
 
 
-def detect_config() -> Tuple[Optional[Path], Dict[str, str]]:
+def parse_config_file(path: Path) -> Tuple[Dict[str, str], List[str], List[str]]:
+    data: Dict[str, str] = {}
+    duplicates: List[str] = []
+    malformed: List[str] = []
+
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise RuntimeError(f"Failed to read {path}: {exc}") from exc
+
+    for idx, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" not in stripped:
+            malformed.append(f"line {idx} missing '=': {stripped}")
+            continue
+        key, raw_value = stripped.split("=", 1)
+        key = key.strip()
+        value = raw_value.split("#", 1)[0].strip()
+        if not key:
+            malformed.append(f"line {idx} missing key: {stripped}")
+            continue
+        if key in data:
+            duplicates.append(f"line {idx}: duplicate key {key}")
+        data[key] = value
+
+    return data, duplicates, malformed
+
+
+def detect_config_with_diagnostics() -> Tuple[Optional[Path], Dict[str, str], List[str], List[str]]:
+    errors: List[str] = []
     for candidate in CONFIG_CANDIDATES:
         try:
             if candidate.exists():
-                data: Dict[str, str] = {}
-                for line in candidate.read_text().splitlines():
-                    if not line or line.strip().startswith("#"):
-                        continue
-                    if "=" not in line:
-                        continue
-                    key, value = line.split("=", 1)
-                    data[key.strip()] = value.strip()
-                return candidate, data
-        except OSError:
+                data, duplicates, malformed = parse_config_file(candidate)
+                if errors:
+                    malformed = list(malformed) + errors
+                return candidate, data, duplicates, malformed
+        except RuntimeError as exc:
+            errors.append(str(exc))
             continue
-    return None, {}
+        except OSError as exc:
+            errors.append(f"Failed to access {candidate}: {exc}")
+            continue
+    return None, {}, [], errors
+
+
+def detect_config() -> Tuple[Optional[Path], Dict[str, str]]:
+    path, data, _, _ = detect_config_with_diagnostics()
+    return path, data
 
 
 def resolve_config_path() -> Path:
@@ -1519,9 +1569,119 @@ def format_config_lines(config_path: Optional[Path], config: Dict[str, str]) -> 
     return lines
 
 
+def analyze_config_integrity(
+    config_path: Optional[Path],
+    config: Dict[str, str],
+    duplicates: Sequence[str],
+    malformed: Sequence[str],
+) -> List[str]:
+    lines: List[str] = []
+    issues = False
+
+    if config_path is None:
+        locations = ", ".join(str(path) for path in CONFIG_CANDIDATES)
+        lines.append("⚠ Configuration file not detected; defaults in effect.")
+        lines.append(f"   Expected one of: {locations}")
+        return lines
+
+    lines.append(f"Source: {config_path}")
+
+    for detail in malformed:
+        lines.append(f"⚠ Parse issue: {detail}")
+        issues = True
+
+    for detail in duplicates:
+        lines.append(f"⚠ Duplicate setting: {detail} (last value takes effect)")
+        issues = True
+
+    float_values: Dict[str, float] = {}
+
+    for key, label in CONFIG_BOOL_KEYS.items():
+        value = config.get(key)
+        if value is None:
+            lines.append(f"⚠ {label} ({key}) missing; defaults may weaken defenses.")
+            issues = True
+            continue
+        if value not in {"0", "1"}:
+            lines.append(f"⚠ {label} ({key}) has invalid value {value!r}; expected 0 or 1.")
+            issues = True
+            continue
+        state = "enabled" if value == "1" else "disabled"
+        lines.append(f"{label}: {state}")
+
+    for key, (label, minimum, maximum) in CONFIG_FLOAT_FIELDS.items():
+        value = config.get(key)
+        if value is None:
+            lines.append(f"⚠ {label} ({key}) missing; set within {minimum}–{maximum}.")
+            issues = True
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            lines.append(f"⚠ {label} ({key}) not numeric ({value!r}).")
+            issues = True
+            continue
+        if not (minimum <= number <= maximum):
+            lines.append(
+                f"⚠ {label} ({key}) {number:.3f} outside {minimum}–{maximum}."
+            )
+            issues = True
+            continue
+        float_values[key] = number
+        lines.append(f"{label}: {number:.3f}")
+
+    for key, (label, minimum, maximum) in CONFIG_INT_FIELDS.items():
+        value = config.get(key)
+        if value is None:
+            lines.append(f"⚠ {label} ({key}) missing; set within {minimum}–{maximum}.")
+            issues = True
+            continue
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            lines.append(f"⚠ {label} ({key}) not an integer ({value!r}).")
+            issues = True
+            continue
+        if not (minimum <= number <= maximum):
+            lines.append(f"⚠ {label} ({key}) {number} outside {minimum}–{maximum}.")
+            issues = True
+            continue
+        lines.append(f"{label}: {number}")
+
+    mode = config.get(CONFIG_DISCOVERY_KEY)
+    if mode is None:
+        lines.append(
+            f"⚠ Discovery mode ({CONFIG_DISCOVERY_KEY}) missing; choose {sorted(CONFIG_DISCOVERY_MODES)}."
+        )
+        issues = True
+    else:
+        normalized = mode.lower()
+        if normalized not in CONFIG_DISCOVERY_MODES:
+            lines.append(
+                f"⚠ Discovery mode ({CONFIG_DISCOVERY_KEY}) invalid ({mode!r});"
+                f" valid options: {sorted(CONFIG_DISCOVERY_MODES)}."
+            )
+            issues = True
+        else:
+            lines.append(f"Discovery mode: {normalized}")
+
+    min_risk = float_values.get("GA_PROC_MIN_RISK")
+    threshold = float_values.get("GA_PROC_THRESHOLD")
+    if min_risk is not None and threshold is not None and min_risk < threshold:
+        lines.append(
+            "⚠ GA_PROC_MIN_RISK below GA_PROC_THRESHOLD; process alerts may be skipped."
+        )
+        issues = True
+
+    if not issues:
+        lines.append("Configuration settings validated successfully.")
+
+    return lines
+
+
 def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
     stats = load_json(ALERT_STATS)
-    config_path, config = detect_config()
+    config_path, config, config_duplicates, config_malformed = detect_config_with_diagnostics()
     services = gather_service_lines()
     enablement = gather_enablement_lines()
     summary = format_summary(stats)
@@ -1565,6 +1725,9 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
         for candidate in CONFIG_CANDIDATES:
             filesystem_entries.append(("Configuration candidate", candidate))
     filesystem_hygiene = analyze_filesystem_hygiene(filesystem_entries)
+    config_integrity = analyze_config_integrity(
+        config_path, config, config_duplicates, config_malformed
+    )
 
     summary_view = [
         ("Service Status", services),
@@ -1626,6 +1789,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
                 "Press V to run a health check without restarting services.",
                 "Press J to inspect the full health check log.",
                 "Press 0 to open raw alert telemetry for deep inspection.",
+                "Review Configuration Integrity under Resilience after editing nn_ids.conf.",
                 "Review Unit Enablement under Resilience to confirm services auto-start.",
                 "Use [?] for additional maintenance automation shortcuts.",
             ],
@@ -1649,6 +1813,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
                 ("Recent Alert Alignment", recent_alignment),
                 ("Unit Enablement", enablement),
                 ("File Freshness", freshness),
+                ("Configuration Integrity", config_integrity),
                 ("Filesystem Hygiene", filesystem_hygiene),
                 (
                     "Mitigation Guidance",

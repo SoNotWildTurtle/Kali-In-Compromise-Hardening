@@ -49,6 +49,27 @@ CONFIG_CANDIDATES: Sequence[Path] = (
     Path(__file__).resolve().parent / "nn_ids.conf",
 )
 
+CONFIG_BOOL_FIELDS: Dict[str, str] = {
+    "NN_IDS_SANITIZE": "Packet sanitization",
+    "NN_IDS_NOTIFY": "Notification toggle",
+    "NN_IDS_AUTOBLOCK": "Automatic IP blocking",
+    "NN_IDS_THREAT_FEED": "Threat feed updates",
+}
+
+CONFIG_FLOAT_FIELDS: Dict[str, Tuple[str, float, float]] = {
+    "NN_IDS_THRESHOLD": ("Alert probability threshold", 0.0, 1.0),
+    "NN_SYS_THRESHOLD": ("Syscall probability threshold", 0.0, 1.0),
+    "GA_PROC_THRESHOLD": ("GA Tech process threshold", 0.0, 1.0),
+    "GA_PROC_MIN_RISK": ("GA Tech process minimum risk", 0.0, 1.0),
+}
+
+CONFIG_INT_FIELDS: Dict[str, Tuple[str, int, int]] = {
+    "NN_SYS_WINDOW": ("Syscall evaluation window", 1, 4096),
+}
+
+CONFIG_DISCOVERY_KEY = "NN_IDS_DISCOVERY_MODE"
+CONFIG_DISCOVERY_MODES = {"auto", "manual", "notify", "none"}
+
 PROTECTED_PATHS: Sequence[Tuple[Path, str]] = (
     (ALERT_STATS.parent, "Alert telemetry directory"),
     (ALERT_STATS, "Alert telemetry"),
@@ -142,6 +163,38 @@ def _check_secure_path(
         logger(f"{label} permissions secure ({owner} {mode_text})")
 
     return healthy
+
+
+def _parse_config_file(path: Path) -> Tuple[Dict[str, str], List[str], List[str]]:
+    """Parse a simple KEY=VALUE configuration file."""
+
+    data: Dict[str, str] = {}
+    duplicates: List[str] = []
+    malformed: List[str] = []
+
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise RuntimeError(f"Unable to read {path}: {exc}") from exc
+
+    for idx, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" not in stripped:
+            malformed.append(f"line {idx} missing '=': {stripped}")
+            continue
+        key, raw_value = stripped.split("=", 1)
+        key = key.strip()
+        value = raw_value.split("#", 1)[0].strip()
+        if not key:
+            malformed.append(f"line {idx} missing key: {stripped}")
+            continue
+        if key in data:
+            duplicates.append(f"line {idx}: duplicate key {key}")
+        data[key] = value
+
+    return data, duplicates, malformed
 
 
 def _systemctl_available(logger: Callable[[str], None]) -> bool:
@@ -1516,6 +1569,130 @@ def check_model(logger: Callable[[str], None]) -> bool:
     return True
 
 
+def check_configuration_integrity(logger: Callable[[str], None]) -> bool:
+    """Validate IDS configuration values for sane and supported settings."""
+
+    healthy = True
+    config_path: Optional[Path] = None
+    config_data: Dict[str, str] = {}
+    duplicate_lines: List[str] = []
+    malformed_lines: List[str] = []
+
+    for candidate in CONFIG_CANDIDATES:
+        try:
+            if candidate.exists():
+                data, duplicates, malformed = _parse_config_file(candidate)
+                config_path = candidate
+                config_data = data
+                duplicate_lines = duplicates
+                malformed_lines = malformed
+                break
+        except RuntimeError as exc:
+            logger(str(exc))
+            healthy = False
+
+    if config_path is None:
+        locations = ", ".join(str(path) for path in CONFIG_CANDIDATES)
+        logger(f"IDS configuration missing; expected one of: {locations}")
+        return False
+
+    if malformed_lines:
+        healthy = False
+        for detail in malformed_lines:
+            logger(f"Configuration parse issue in {config_path}: {detail}")
+
+    if duplicate_lines:
+        healthy = False
+        for detail in duplicate_lines:
+            logger(f"Duplicate configuration key in {config_path}: {detail}")
+
+    bool_values: Dict[str, bool] = {}
+    for key, label in CONFIG_BOOL_FIELDS.items():
+        raw_value = config_data.get(key)
+        if raw_value is None:
+            logger(f"{label} ({key}) missing; default may be unsafe")
+            healthy = False
+            continue
+        if raw_value not in {"0", "1"}:
+            logger(f"{label} ({key}) invalid value {raw_value!r}; expected 0 or 1")
+            healthy = False
+            continue
+        bool_values[key] = raw_value == "1"
+        state = "enabled" if bool_values[key] else "disabled"
+        logger(f"{label} ({key}) {state}")
+
+    float_values: Dict[str, float] = {}
+    for key, (label, minimum, maximum) in CONFIG_FLOAT_FIELDS.items():
+        raw_value = config_data.get(key)
+        if raw_value is None:
+            logger(f"{label} ({key}) missing; set within [{minimum}, {maximum}]")
+            healthy = False
+            continue
+        try:
+            number = float(raw_value)
+        except (TypeError, ValueError):
+            logger(f"{label} ({key}) not numeric ({raw_value!r})")
+            healthy = False
+            continue
+        if not (minimum <= number <= maximum):
+            logger(f"{label} ({key}) {number:.3f} outside [{minimum}, {maximum}]")
+            healthy = False
+            continue
+        float_values[key] = number
+        logger(f"{label} ({key}) {number:.3f}")
+
+    int_values: Dict[str, int] = {}
+    for key, (label, minimum, maximum) in CONFIG_INT_FIELDS.items():
+        raw_value = config_data.get(key)
+        if raw_value is None:
+            logger(f"{label} ({key}) missing; configure within [{minimum}, {maximum}]")
+            healthy = False
+            continue
+        try:
+            number = int(raw_value)
+        except (TypeError, ValueError):
+            logger(f"{label} ({key}) not an integer ({raw_value!r})")
+            healthy = False
+            continue
+        if not (minimum <= number <= maximum):
+            logger(f"{label} ({key}) {number} outside [{minimum}, {maximum}]")
+            healthy = False
+            continue
+        int_values[key] = number
+        logger(f"{label} ({key}) {number}")
+
+    discovery_mode = config_data.get(CONFIG_DISCOVERY_KEY)
+    if discovery_mode is None:
+        logger(
+            f"Discovery mode ({CONFIG_DISCOVERY_KEY}) missing; choose one of {sorted(CONFIG_DISCOVERY_MODES)}"
+        )
+        healthy = False
+    else:
+        normalized = discovery_mode.lower()
+        if normalized not in CONFIG_DISCOVERY_MODES:
+            logger(
+                f"Discovery mode ({CONFIG_DISCOVERY_KEY}) invalid value {discovery_mode!r};"
+                f" expected one of {sorted(CONFIG_DISCOVERY_MODES)}"
+            )
+            healthy = False
+        else:
+            logger(f"Discovery mode ({CONFIG_DISCOVERY_KEY}) set to {normalized}")
+
+    min_risk = float_values.get("GA_PROC_MIN_RISK")
+    threshold = float_values.get("GA_PROC_THRESHOLD")
+    if min_risk is not None and threshold is not None and min_risk < threshold:
+        logger(
+            "GA Tech process minimum risk (GA_PROC_MIN_RISK) below GA_PROC_THRESHOLD;"
+            " adjust to avoid suppressing process alerts"
+        )
+        healthy = False
+
+    if healthy:
+        logger(f"Configuration integrity verified using {config_path}")
+
+    return healthy
+
+
 def check_filesystem_security(logger: Callable[[str], None]) -> bool:
     """Ensure sensitive IDS assets are owned and permissioned securely."""
 
@@ -1584,6 +1761,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ),
         ("Scheduled timers", check_timers(logger)),
         ("Systemd enablement", check_unit_enablement(logger)),
+        ("Configuration integrity", check_configuration_integrity(logger)),
         ("Filesystem hygiene", check_filesystem_security(logger)),
     ]
 
