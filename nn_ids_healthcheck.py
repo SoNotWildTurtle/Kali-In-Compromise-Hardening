@@ -410,6 +410,51 @@ def _validate_logrotate_block(
     return healthy
 
 
+SECURE_LOG_GROUPS = {"adm", "root"}
+
+
+def _enumerate_insecure_ancestors(log_path: Path) -> Tuple[List[str], Optional[str]]:
+    """Return insecure ancestor details or an error message for the path chain."""
+
+    issues: List[str] = []
+
+    for ancestor in log_path.parents:
+        if ancestor == log_path.parent:
+            continue
+        if ancestor == Path(ancestor.anchor):
+            break
+        try:
+            stat_result = ancestor.lstat()
+        except OSError as exc:
+            return [], f"Unable to stat ancestor directory {ancestor} for {log_path}: {exc}"
+
+        mode = stat_result.st_mode
+        try:
+            owner = pwd.getpwuid(stat_result.st_uid).pw_name
+        except KeyError:
+            owner = str(stat_result.st_uid)
+        try:
+            group = grp.getgrgid(stat_result.st_gid).gr_name
+        except KeyError:
+            group = str(stat_result.st_gid)
+
+        if stat.S_ISLNK(mode):
+            issues.append(f"ancestor {ancestor} is a symbolic link")
+            continue
+
+        permissions = stat.S_IMODE(mode)
+        if permissions & stat.S_IWOTH:
+            issues.append(f"ancestor {ancestor} world-writable")
+        if permissions & stat.S_IWGRP and group not in SECURE_LOG_GROUPS:
+            issues.append(
+                f"ancestor {ancestor} group-writable (group {group})"
+            )
+        if owner != "root":
+            issues.append(f"ancestor {ancestor} owner {owner}")
+
+    return issues, None
+
+
 def _validate_log_file_metadata(
     log_path: Path, logger: Callable[[str], None]
 ) -> bool:
@@ -454,7 +499,7 @@ def _validate_log_file_metadata(
 
     if owner != "root":
         issues.append(f"owner {owner}")
-    if group not in {"adm", "root"}:
+    if group not in SECURE_LOG_GROUPS:
         issues.append(f"group {group}")
 
     parent = log_path.parent
@@ -465,6 +510,10 @@ def _validate_log_file_metadata(
         return False
 
     try:
+        parent_owner = pwd.getpwuid(parent_stat.st_uid).pw_name
+    except KeyError:
+        parent_owner = str(parent_stat.st_uid)
+    try:
         parent_group = grp.getgrgid(parent_stat.st_gid).gr_name
     except KeyError:
         parent_group = str(parent_stat.st_gid)
@@ -474,10 +523,20 @@ def _validate_log_file_metadata(
         issues.append(f"parent {parent} is a symbolic link")
     if parent_mode & stat.S_IWOTH:
         issues.append(f"parent {parent} world-writable")
-    if parent_mode & stat.S_IWGRP and parent_group not in {"adm", "root"}:
+    if parent_mode & stat.S_IWGRP and parent_group not in SECURE_LOG_GROUPS:
         issues.append(
             f"parent {parent} group-writable (group {parent_group})"
         )
+    if parent_owner != "root":
+        issues.append(f"parent {parent} owner {parent_owner}")
+
+    ancestor_issues, ancestor_error = _enumerate_insecure_ancestors(log_path)
+    if ancestor_error:
+        logger(ancestor_error)
+        return False
+
+    if ancestor_issues:
+        issues.extend(ancestor_issues)
 
     if issues:
         logger(

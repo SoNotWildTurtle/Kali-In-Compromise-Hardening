@@ -62,6 +62,7 @@ LOGROTATE_TARGETS: List[Path] = [
     Path("/var/log/nn_ids_report.log"),
     Path("/var/log/nn_ids_train.log"),
 ]
+SECURE_LOG_GROUPS = {"adm", "root"}
 LOGROTATE_REQUIRED_DIRECTIVES = {
     "daily",
     "missingok",
@@ -288,6 +289,46 @@ def _parse_logrotate_blocks(text: str) -> List[Tuple[str, List[str]]]:
             block_lines.append(stripped)
 
     return blocks
+
+
+def _enumerate_insecure_log_ancestors(log_path: Path) -> Tuple[List[str], Optional[str]]:
+    issues: List[str] = []
+
+    for ancestor in log_path.parents:
+        if ancestor == log_path.parent:
+            continue
+        if ancestor == Path(ancestor.anchor):
+            break
+        try:
+            stat_result = ancestor.lstat()
+        except OSError as exc:
+            return [], f"unable to stat ancestor {ancestor}: {exc}"
+
+        mode = stat_result.st_mode
+        try:
+            owner = pwd.getpwuid(stat_result.st_uid).pw_name
+        except KeyError:
+            owner = str(stat_result.st_uid)
+        try:
+            group = grp.getgrgid(stat_result.st_gid).gr_name
+        except KeyError:
+            group = str(stat_result.st_gid)
+
+        if stat.S_ISLNK(mode):
+            issues.append(f"ancestor {ancestor} is a symlink")
+            continue
+
+        permissions = stat.S_IMODE(mode)
+        if permissions & stat.S_IWOTH:
+            issues.append(f"ancestor {ancestor} world-writable")
+        if permissions & stat.S_IWGRP and group not in SECURE_LOG_GROUPS:
+            issues.append(
+                f"ancestor {ancestor} group-writable (group {group})"
+            )
+        if owner != "root":
+            issues.append(f"ancestor {ancestor} owner {owner}")
+
+    return issues, None
 
 
 def load_json(path: Path) -> Dict:
@@ -1831,7 +1872,7 @@ def analyze_logrotate_config() -> List[str]:
                     issues.append(f"mode '{mode_token}' invalid")
                 if owner != "root":
                     issues.append(f"owner {owner}")
-                if group not in {"adm", "root"}:
+                if group not in SECURE_LOG_GROUPS:
                     issues.append(f"group {group}")
         else:
             issues.append("create directive absent")
@@ -1892,7 +1933,7 @@ def analyze_logrotate_config() -> List[str]:
                 metadata_warnings.append("group-writable")
             if owner_name != "root":
                 metadata_warnings.append(f"owner {owner_name}")
-            if group_name not in {"adm", "root"}:
+            if group_name not in SECURE_LOG_GROUPS:
                 metadata_warnings.append(f"group {group_name}")
 
             parent = log_path.parent
@@ -1901,6 +1942,10 @@ def analyze_logrotate_config() -> List[str]:
             except OSError as exc:
                 metadata_warnings.append(f"unable to stat parent {parent}: {exc}")
             else:
+                try:
+                    parent_owner = pwd.getpwuid(parent_stat.st_uid).pw_name
+                except KeyError:
+                    parent_owner = str(parent_stat.st_uid)
                 try:
                     parent_group = grp.getgrgid(parent_stat.st_gid).gr_name
                 except KeyError:
@@ -1911,10 +1956,20 @@ def analyze_logrotate_config() -> List[str]:
                 parent_mode = stat.S_IMODE(parent_stat.st_mode)
                 if parent_mode & stat.S_IWOTH:
                     metadata_warnings.append(f"parent {parent} world-writable")
-                if parent_mode & stat.S_IWGRP and parent_group not in {"adm", "root"}:
+                if parent_mode & stat.S_IWGRP and parent_group not in SECURE_LOG_GROUPS:
                     metadata_warnings.append(
                         f"parent {parent} group-writable (group {parent_group})"
                     )
+                if parent_owner != "root":
+                    metadata_warnings.append(
+                        f"parent {parent} owner {parent_owner}"
+                    )
+
+            ancestor_issues, ancestor_error = _enumerate_insecure_log_ancestors(log_path)
+            if ancestor_error:
+                metadata_warnings.append(ancestor_error)
+            elif ancestor_issues:
+                metadata_warnings.extend(ancestor_issues)
 
         if metadata_warnings:
             lines.append(
