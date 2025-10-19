@@ -680,6 +680,99 @@ def analyze_probability_coverage(stats: Dict) -> List[str]:
     return lines
 
 
+def analyze_hourly_distribution(stats: Dict) -> List[str]:
+    data = stats.get("hourly_distribution")
+    if not isinstance(data, dict) or not data:
+        return ["Hourly distribution telemetry unavailable."]
+
+    lines: List[str] = []
+    buckets: Dict[int, int] = {}
+    for label, raw_count in data.items():
+        try:
+            hour = int(label)
+        except (TypeError, ValueError):
+            lines.append(f"⚠ Hour bucket {label!r} is not numeric.")
+            continue
+        if not 0 <= hour <= 23:
+            lines.append(f"⚠ Hour bucket {label!r} lies outside expected 0–23 range.")
+            continue
+        try:
+            count = int(raw_count)
+        except (TypeError, ValueError):
+            lines.append(f"⚠ Hour {hour:02d} count {raw_count!r} not an integer.")
+            continue
+        if count < 0:
+            lines.append(f"⚠ Hour {hour:02d} reports negative alert volume ({count}).")
+            continue
+        buckets[hour] = count
+
+    if not buckets:
+        if not lines:
+            lines.append("Hourly distribution contains no recorded alerts.")
+        return lines
+
+    sorted_hours = sorted(buckets)
+    span = f"{sorted_hours[0]:02d}"
+    if sorted_hours[-1] != sorted_hours[0]:
+        span = f"{sorted_hours[0]:02d}–{sorted_hours[-1]:02d}"
+    lines.append(
+        f"{len(sorted_hours)} hour bucket(s) recorded spanning {span}."
+    )
+
+    if len(sorted_hours) > 24:
+        lines.append("⚠ More than 24 hour buckets captured — retention window unexpected.")
+
+    now_hour = datetime.now(timezone.utc).hour
+    raw_last_hour = stats.get("alerts_last_hour")
+    try:
+        alerts_last_hour = int(raw_last_hour)
+    except (TypeError, ValueError):
+        alerts_last_hour = None
+        if raw_last_hour not in (None, ""):
+            lines.append(f"⚠ alerts_last_hour value {raw_last_hour!r} not numeric.")
+
+    if alerts_last_hour is not None and alerts_last_hour > 0:
+        current_bucket = buckets.get(now_hour)
+        if current_bucket is None:
+            lines.append(
+                "⚠ Current hour missing from hourly_distribution despite alerts in the last hour."
+            )
+        elif current_bucket <= 0:
+            lines.append(
+                "⚠ Current hour bucket reports zero alerts while alerts_last_hour indicates activity."
+            )
+        else:
+            lines.append(
+                f"Current hour {now_hour:02d} recorded {current_bucket} alert(s) per hourly_distribution."
+            )
+    elif alerts_last_hour == 0:
+        lines.append("No alerts recorded in the last hour per telemetry counters.")
+
+    latest_time, _, _ = _latest_recent_alert(stats)
+    if latest_time is not None:
+        recent_hour = latest_time.astimezone(timezone.utc).hour
+        bucket = buckets.get(recent_hour)
+        if bucket is None:
+            lines.append(
+                "⚠ Hourly distribution missing bucket for the hour containing the most recent alert."
+            )
+        elif bucket <= 0:
+            lines.append(
+                "⚠ Hour containing the most recent alert reports zero alerts in hourly_distribution."
+            )
+        else:
+            lines.append(
+                f"Hour {recent_hour:02d} reflects the most recent alert with {bucket} recorded."
+            )
+
+    top_hours = sorted(buckets.items(), key=lambda item: item[1], reverse=True)[:3]
+    if top_hours:
+        formatted = ", ".join(f"{hour:02d}h:{count}" for hour, count in top_hours)
+        lines.append(f"Top hourly volumes: {formatted}.")
+
+    return lines
+
+
 def summarize_recent_alignment(stats: Dict) -> List[str]:
     latest_time, latest_reason, latest_probability = _latest_recent_alert(stats)
     minute_counts = stats.get("minute_counts") if isinstance(stats.get("minute_counts"), dict) else {}
@@ -1167,6 +1260,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
     health_tail = format_health_log_tail()
     integrity_alerts = collect_integrity_alerts(stats)
     probability_coverage = analyze_probability_coverage(stats)
+    hourly_coverage = analyze_hourly_distribution(stats)
     recent_alignment = summarize_recent_alignment(stats)
     timeline_integrity = analyze_timeline_integrity(stats)
     freshness = format_file_freshness(
@@ -1254,6 +1348,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
                 ("Telemetry Integrity", integrity_alerts),
                 ("Timeline Integrity", timeline_integrity),
                 ("Probability Coverage", probability_coverage),
+                ("Hourly Coverage", hourly_coverage),
                 ("Recent Alert Alignment", recent_alignment),
                 ("File Freshness", freshness),
                 (

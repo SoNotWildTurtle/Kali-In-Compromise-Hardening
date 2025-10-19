@@ -1055,6 +1055,63 @@ def check_alert_stats(
         max_entries=48,
     )
     healthy = healthy and hourly_ok
+    hourly_counts_by_hour: Dict[int, int] = {}
+    if hourly_ok and hourly_distribution:
+        if len(hourly_distribution) > 24:
+            logger(
+                "hourly_distribution contains more than 24 entries;"
+                " retention window may be corrupted"
+            )
+            healthy = False
+        for label, count in hourly_distribution.items():
+            try:
+                hour = int(label)
+            except (TypeError, ValueError):
+                logger(
+                    f"hourly_distribution label {label!r} is not an integer hour"
+                    " telemetry map malformed"
+                )
+                healthy = False
+                continue
+            if not 0 <= hour <= 23:
+                logger(
+                    f"hourly_distribution label {label!r} outside range 0-23;"
+                    " investigate telemetry normalisation"
+                )
+                healthy = False
+                continue
+            hourly_counts_by_hour[hour] = int(count)
+
+        if alerts_last_hour is not None and alerts_last_hour > 0:
+            current_hour = now.astimezone(timezone.utc).hour
+            bucket = hourly_counts_by_hour.get(current_hour)
+            if bucket is None:
+                logger(
+                    "hourly_distribution missing current hour despite alerts in the last hour;"
+                    " telemetry reducer lagging"
+                )
+                healthy = False
+            elif bucket <= 0:
+                logger(
+                    "hourly_distribution reports zero alerts for current hour despite recent activity"
+                )
+                healthy = False
+
+        if latest_recent_alert is not None:
+            recent_hour = latest_recent_alert.astimezone(timezone.utc).hour
+            bucket = hourly_counts_by_hour.get(recent_hour)
+            if bucket is None:
+                logger(
+                    "hourly_distribution missing hour covering most recent alert;"
+                    " telemetry retention gap"
+                )
+                healthy = False
+            elif bucket <= 0:
+                logger(
+                    "hourly_distribution reports zero alerts for hour containing most recent alert"
+                )
+                healthy = False
+
     if hourly_ok and hourly_distribution and alerts_last_hour is not None:
         hourly_total = sum(hourly_distribution.values())
         if hourly_total < alerts_last_hour:
