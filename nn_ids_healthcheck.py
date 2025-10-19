@@ -437,6 +437,33 @@ def _validate_logrotate_block(
                 )
                 healthy = False
 
+    su_line = directives.get("su")
+    if su_line is None:
+        logger(
+            f"{log_path} rotation missing 'su' directive; add 'su root adm' to drop privileges"
+        )
+        healthy = False
+    else:
+        parts = su_line.split()
+        if len(parts) < 3:
+            logger(
+                f"{log_path} su directive incomplete ({su_line}); specify user and group like 'su root adm'"
+            )
+            healthy = False
+        else:
+            su_user = parts[1]
+            su_group = parts[2]
+            if su_user != "root":
+                logger(
+                    f"{log_path} su directive user {su_user}; set to root to rotate securely"
+                )
+                healthy = False
+            if su_group not in SECURE_LOG_GROUPS:
+                logger(
+                    f"{log_path} su directive group {su_group}; choose from {sorted(SECURE_LOG_GROUPS)}"
+                )
+                healthy = False
+
     if healthy:
         logger(f"{log_path} logrotate policy validated")
 

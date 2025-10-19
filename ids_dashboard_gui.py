@@ -82,6 +82,7 @@ SYSTEMD_TIMESTAMP_FORMATS: Sequence[str] = (
 LOGROTATE_TIMER_MAX_INTERVAL = timedelta(days=2)
 LOGROTATE_TIMER_GRACE = timedelta(hours=6)
 SECURE_LOG_GROUPS = {"adm", "root"}
+LOGROTATE_SECURE_USER = "root"
 LOGROTATE_REQUIRED_DIRECTIVES = {
     "daily",
     "missingok",
@@ -2292,6 +2293,23 @@ def analyze_logrotate_config() -> List[str]:
         else:
             issues.append("create directive absent")
 
+        su_line = directives.get("su")
+        su_user: Optional[str] = None
+        su_group: Optional[str] = None
+        if su_line:
+            parts = su_line.split()
+            if len(parts) < 3:
+                issues.append("su incomplete")
+            else:
+                su_user = parts[1]
+                su_group = parts[2]
+                if su_user != LOGROTATE_SECURE_USER:
+                    issues.append(f"su user {su_user}")
+                if su_group not in SECURE_LOG_GROUPS:
+                    issues.append(f"su group {su_group}")
+        else:
+            issues.append("su directive absent")
+
         pattern_note = "" if matched_pattern == str(log_path) else f" via {matched_pattern}"
         if issues:
             lines.append(f"⚠ {log_path.name}: {'; '.join(issues)}{pattern_note}.")
@@ -2303,6 +2321,8 @@ def analyze_logrotate_config() -> List[str]:
         status_parts.append("daily")
         if mode_token and owner and group:
             status_parts.append(f"create {mode_token} {owner}:{group}")
+        if su_user and su_group:
+            status_parts.append(f"su {su_user}:{su_group}")
 
         metadata_warnings: List[str] = []
         try:
