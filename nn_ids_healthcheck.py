@@ -7,7 +7,11 @@ import argparse
 import hashlib
 import json
 import math
+import os
+import pwd
+import grp
 import shutil
+import stat
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -39,6 +43,15 @@ CRITICAL_TIMERS: Sequence[Tuple[str, str]] = (
     ("nn_ids_restore.timer", "Self-heal scheduler"),
 )
 
+PROTECTED_PATHS: Sequence[Tuple[Path, str]] = (
+    (ALERT_STATS.parent, "Alert telemetry directory"),
+    (ALERT_STATS, "Alert telemetry"),
+    (MODEL.parent, "Model artifact directory"),
+    (MODEL, "Model artifact"),
+    (LOG.parent, "Health log directory"),
+    (LOG, "Health log"),
+)
+
 SYSTEMCTL_AVAILABLE = shutil.which("systemctl") is not None
 _SYSTEMCTL_WARNING_EMITTED = False
 
@@ -57,6 +70,72 @@ def create_logger(verbose: bool) -> Callable[[str], None]:
             print(line)
 
     return _log
+
+
+def _format_mode(mode: int) -> str:
+    return f"{stat.S_IMODE(mode):04o}"
+
+
+def _format_owner(uid: int, gid: int) -> str:
+    try:
+        user = pwd.getpwuid(uid).pw_name
+    except KeyError:
+        user = str(uid)
+    try:
+        group = grp.getgrgid(gid).gr_name
+    except KeyError:
+        group = str(gid)
+    return f"{user}:{group}"
+
+
+def _check_secure_path(
+    path: Path,
+    label: str,
+    logger: Callable[[str], None],
+) -> bool:
+    """Validate ownership and permissions for security-sensitive assets."""
+
+    try:
+        stat_result = path.lstat()
+    except FileNotFoundError:
+        logger(f"{label} missing ({path})")
+        return False
+    except OSError as exc:
+        logger(f"Unable to stat {label} ({path}): {exc}")
+        return False
+
+    healthy = True
+    mode = stat_result.st_mode
+    owner = _format_owner(stat_result.st_uid, stat_result.st_gid)
+    mode_text = _format_mode(mode)
+
+    if stat.S_ISLNK(mode):
+        logger(f"{label} is a symbolic link ({path}); replace with a regular file")
+        healthy = False
+
+    permissions = stat.S_IMODE(mode)
+    if permissions & stat.S_IWOTH:
+        logger(
+            f"{label} is world-writable (mode {mode_text}); tighten permissions on {path}"
+        )
+        healthy = False
+    if permissions & stat.S_IWGRP:
+        logger(
+            f"{label} is group-writable (mode {mode_text}); restrict group write access"
+        )
+        healthy = False
+
+    allowed_uids = {0, os.getuid()}
+    if stat_result.st_uid not in allowed_uids:
+        logger(
+            f"{label} owned by {owner}; expected root or the invoking user for {path}"
+        )
+        healthy = False
+
+    if healthy:
+        logger(f"{label} permissions secure ({owner} {mode_text})")
+
+    return healthy
 
 
 def _systemctl_available(logger: Callable[[str], None]) -> bool:
@@ -1375,6 +1454,20 @@ def check_model(logger: Callable[[str], None]) -> bool:
     return True
 
 
+def check_filesystem_security(logger: Callable[[str], None]) -> bool:
+    """Ensure sensitive IDS assets are owned and permissioned securely."""
+
+    seen: set[Path] = set()
+    healthy = True
+    for path, label in PROTECTED_PATHS:
+        if path in seen:
+            continue
+        seen.add(path)
+        if not _check_secure_path(path, label, logger):
+            healthy = False
+    return healthy
+
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1409,6 +1502,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             check_services(logger, restart=not args.no_restart),
         ),
         ("Scheduled timers", check_timers(logger)),
+        ("Filesystem hygiene", check_filesystem_security(logger)),
     ]
 
     for name, result in check_results:

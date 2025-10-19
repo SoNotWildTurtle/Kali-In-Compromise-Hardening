@@ -11,13 +11,17 @@ from __future__ import annotations
 import curses
 import hashlib
 import json
+import os
+import pwd
+import grp
 import shutil
+import stat
 import subprocess
 import textwrap
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Set
 
 ALERT_STATS = Path("/var/lib/nn_ids/alert_stats.json")
 MODEL_PATH = Path("/opt/nnids/ids_model.pkl")
@@ -109,6 +113,22 @@ def _compute_file_sha256(path: Path) -> Optional[str]:
     except OSError:
         return None
     return digest.hexdigest()
+
+
+def _format_mode(mode: int) -> str:
+    return f"{stat.S_IMODE(mode):04o}"
+
+
+def _describe_owner(uid: int, gid: int) -> str:
+    try:
+        user = pwd.getpwuid(uid).pw_name
+    except KeyError:
+        user = str(uid)
+    try:
+        group = grp.getgrgid(gid).gr_name
+    except KeyError:
+        group = str(gid)
+    return f"{user}:{group}"
 
 
 def load_json(path: Path) -> Dict:
@@ -1339,6 +1359,53 @@ def format_file_freshness(entries: Sequence[Tuple[str, Path]]) -> List[str]:
     return lines
 
 
+def analyze_filesystem_hygiene(entries: Sequence[Tuple[str, Path]]) -> List[str]:
+    """Summarize ownership and permissions for security-sensitive assets."""
+
+    lines: List[str] = []
+    seen: Set[Path] = set()
+    allowed_uids = {0, os.getuid()}
+
+    for label, path in entries:
+        if path in seen:
+            continue
+        seen.add(path)
+        try:
+            stat_result = path.lstat()
+        except FileNotFoundError:
+            lines.append(f"⚠ {label}: missing — {path}")
+            continue
+        except OSError as exc:
+            lines.append(f"⚠ {label}: unable to stat {path} ({exc})")
+            continue
+
+        permissions = stat.S_IMODE(stat_result.st_mode)
+        owner = _describe_owner(stat_result.st_uid, stat_result.st_gid)
+        mode_text = _format_mode(stat_result.st_mode)
+
+        issues: List[str] = []
+        if stat.S_ISLNK(stat_result.st_mode):
+            issues.append("unexpected symlink")
+        if permissions & stat.S_IWOTH:
+            issues.append("world-writable")
+        if permissions & stat.S_IWGRP:
+            issues.append("group-writable")
+        if stat_result.st_uid not in allowed_uids:
+            issues.append(f"owned by {owner} (harden ownership)")
+
+        if issues:
+            joined = ", ".join(issues)
+            lines.append(f"⚠ {label}: {joined} — {path} ({owner} {mode_text})")
+        else:
+            kind = "directory" if stat.S_ISDIR(stat_result.st_mode) else "file"
+            lines.append(f"{label}: secure {kind} ({owner} {mode_text})")
+
+    if not lines:
+        lines.append("No filesystem targets evaluated.")
+
+    return lines
+
+
 def format_health_log_summary() -> List[str]:
     if not HEALTH_LOG.exists():
         return ["Health check log not found."]
@@ -1438,6 +1505,16 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
             ("Health log", HEALTH_LOG),
         ]
     )
+    filesystem_hygiene = analyze_filesystem_hygiene(
+        [
+            ("Telemetry directory", ALERT_STATS.parent),
+            ("Alert telemetry", ALERT_STATS),
+            ("Model directory", MODEL_PATH.parent),
+            ("Model artifact", MODEL_PATH),
+            ("Health log directory", HEALTH_LOG.parent),
+            ("Health log", HEALTH_LOG),
+        ]
+    )
 
     summary_view = [
         ("Service Status", services),
@@ -1520,6 +1597,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
                 ("Model Alignment", model_alignment),
                 ("Recent Alert Alignment", recent_alignment),
                 ("File Freshness", freshness),
+                ("Filesystem Hygiene", filesystem_hygiene),
                 (
                     "Mitigation Guidance",
                     [
