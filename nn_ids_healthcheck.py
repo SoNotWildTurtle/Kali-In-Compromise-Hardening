@@ -19,6 +19,7 @@ MINUTE_FORMAT = "%Y-%m-%dT%H:%MZ"
 RECENT_ALERT_MAX_ENTRIES = 512
 RECENT_ALERT_TOLERANCE = timedelta(seconds=60)
 PROBABILITY_TOLERANCE = 0.01
+PROBABILITY_BUCKET_TOLERANCE = 1e-6
 DRIFT_BOUND = 1.0
 
 CRITICAL_SERVICES: Sequence[Tuple[str, str]] = (
@@ -173,6 +174,24 @@ def _parse_minute_bucket(value: str) -> Optional[datetime]:
     except ValueError:
         return None
     return parsed.replace(tzinfo=timezone.utc)
+
+
+def _parse_probability_bucket_label(label: str) -> Optional[Tuple[float, float]]:
+    """Convert a probability bucket label ("0.90-1.00") into numeric bounds."""
+
+    if not isinstance(label, str):
+        return None
+    parts = label.split("-", 1)
+    if len(parts) != 2:
+        return None
+    try:
+        lower = float(parts[0].strip())
+        upper = float(parts[1].strip())
+    except (TypeError, ValueError):
+        return None
+    if not 0.0 <= lower < upper <= 1.0:
+        return None
+    return lower, upper
 
 
 def _validate_int_field(
@@ -706,6 +725,16 @@ def check_alert_stats(
                 " telemetry aggregation drift detected"
             )
             healthy = False
+        if recent_reason:
+            candidates = {recent_reason}
+            if last_reason:
+                candidates.add(last_reason)
+            if not any(reason_counts.get(candidate, 0) > 0 for candidate in candidates):
+                logger(
+                    "Recent alert reason not represented in reason_counts aggregate;"
+                    " telemetry reducer lagging"
+                )
+                healthy = False
 
     minute_counts, minute_ok = _extract_counter_map(
         data,
@@ -777,6 +806,25 @@ def check_alert_stats(
                 logger(
                     "alerts_current_minute diverges from minute_counts bucket;"
                     " telemetry writer misaligned"
+                )
+                healthy = False
+
+        if latest_recent_alert is not None and latest_recent_alert >= now - timedelta(hours=1):
+            recent_minute_label = (
+                latest_recent_alert.astimezone(timezone.utc)
+                .replace(second=0, microsecond=0)
+                .strftime(MINUTE_FORMAT)
+            )
+            minute_bucket = minute_counts.get(recent_minute_label)
+            if minute_bucket is None:
+                logger(
+                    "minute_counts missing bucket for minute containing most recent alert;"
+                    " telemetry retention gap"
+                )
+                healthy = False
+            elif minute_bucket <= 0:
+                logger(
+                    "minute_counts bucket for most recent alert minute reports zero alerts"
                 )
                 healthy = False
 
@@ -901,6 +949,66 @@ def check_alert_stats(
                 " investigate telemetry reducer"
             )
             healthy = False
+    if buckets_ok and probability_buckets:
+        parsed_ranges: List[Tuple[float, float, str, int]] = []
+        for label, count in probability_buckets.items():
+            parsed = _parse_probability_bucket_label(label)
+            if parsed is None:
+                logger(
+                    f"Probability bucket label {label!r} not in expected range format;"
+                    " reducer misconfigured"
+                )
+                healthy = False
+                continue
+            parsed_ranges.append((parsed[0], parsed[1], label, count))
+
+        if parsed_ranges:
+            parsed_ranges.sort(key=lambda item: (item[0], item[1]))
+            first_lower = parsed_ranges[0][0]
+            last_upper = parsed_ranges[-1][1]
+            if first_lower > PROBABILITY_BUCKET_TOLERANCE:
+                logger(
+                    "Probability buckets do not start near 0.0;"
+                    " low-confidence coverage missing"
+                )
+                healthy = False
+            if last_upper < 1.0 - PROBABILITY_BUCKET_TOLERANCE:
+                logger(
+                    "Probability buckets stop short of 1.0;"
+                    " high-confidence coverage truncated"
+                )
+                healthy = False
+
+            previous_upper = 0.0
+            for lower, upper, label, _ in parsed_ranges:
+                if lower + PROBABILITY_BUCKET_TOLERANCE < previous_upper:
+                    logger(
+                        f"Probability bucket {label} overlaps with a previous range;"
+                        " reducer bins misordered"
+                    )
+                    healthy = False
+                previous_upper = max(previous_upper, upper)
+
+            if recent_probability is not None:
+                matched_label: Optional[str] = None
+                matched_count: Optional[int] = None
+                for lower, upper, label, count in parsed_ranges:
+                    upper_bound = upper + PROBABILITY_BUCKET_TOLERANCE
+                    if lower - PROBABILITY_BUCKET_TOLERANCE <= recent_probability <= upper_bound:
+                        matched_label = label
+                        matched_count = count
+                        break
+                if matched_label is None:
+                    logger(
+                        "Recent alert probability not represented in probability_buckets;"
+                        " reducer lagging"
+                    )
+                    healthy = False
+                elif matched_count is not None and matched_count <= 0:
+                    logger(
+                        f"Probability bucket {matched_label} reports zero alerts despite recent event"
+                    )
+                    healthy = False
 
     hourly_distribution, hourly_ok = _extract_counter_map(
         data,

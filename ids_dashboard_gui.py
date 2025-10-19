@@ -41,6 +41,8 @@ DEFAULT_LOGS: Dict[str, Path] = {
     "incident": INCIDENT_REPORT,
 }
 RECENT_ALERT_MAX_ENTRIES = 512
+MINUTE_FORMAT = "%Y-%m-%dT%H:%MZ"
+PROBABILITY_BUCKET_TOLERANCE = 1e-6
 
 SERVICES: Sequence[Tuple[str, str]] = (
     ("nn_ids.service", "Neural IDS"),
@@ -358,6 +360,22 @@ def _coerce_datetime(value: Optional[str]) -> Optional[datetime]:
     return dt
 
 
+def _parse_probability_bucket(label: object) -> Optional[Tuple[float, float]]:
+    if not isinstance(label, str):
+        return None
+    parts = label.split("-", 1)
+    if len(parts) != 2:
+        return None
+    try:
+        lower = float(parts[0].strip())
+        upper = float(parts[1].strip())
+    except (TypeError, ValueError):
+        return None
+    if not 0.0 <= lower < upper <= 1.0:
+        return None
+    return lower, upper
+
+
 def _parse_time(value: Optional[str]) -> Optional[str]:
     dt = _coerce_datetime(value)
     if dt is None:
@@ -384,6 +402,36 @@ def format_recent_alerts(stats: Dict, limit: int = 5) -> List[str]:
     if not lines:
         return ["No recent alerts captured yet."]
     return lines
+
+
+def _latest_recent_alert(stats: Dict) -> Tuple[Optional[datetime], Optional[str], Optional[float]]:
+    entries = stats.get("recent_alerts")
+    if not isinstance(entries, list):
+        return None, None, None
+
+    latest_time: Optional[datetime] = None
+    latest_reason: Optional[str] = None
+    latest_probability: Optional[float] = None
+
+    for entry in reversed(entries):
+        if not isinstance(entry, dict):
+            continue
+        timestamp = _coerce_datetime(entry.get("time"))
+        if timestamp is None:
+            continue
+        latest_time = timestamp
+        reason_value = entry.get("canonical_reason") or entry.get("reason")
+        if isinstance(reason_value, str) and reason_value.strip():
+            latest_reason = reason_value.strip()
+        probability_value = entry.get("probability")
+        try:
+            if probability_value is not None and probability_value != "":
+                latest_probability = float(probability_value)
+        except (TypeError, ValueError):
+            latest_probability = None
+        break
+
+    return latest_time, latest_reason, latest_probability
 
 
 def format_adversarial(stats: Dict) -> List[str]:
@@ -531,6 +579,166 @@ def format_distributions(stats: Dict) -> List[str]:
     return distributions
 
 
+def analyze_probability_coverage(stats: Dict) -> List[str]:
+    buckets = stats.get("probability_buckets")
+    if not isinstance(buckets, dict) or not buckets:
+        return ["Probability bucket telemetry unavailable."]
+
+    parsed: List[Tuple[float, float, str, int]] = []
+    invalid: List[str] = []
+    for label, raw_count in buckets.items():
+        parsed_range = _parse_probability_bucket(label)
+        if parsed_range is None:
+            invalid.append(str(label))
+            continue
+        try:
+            count = int(raw_count)
+        except (TypeError, ValueError):
+            invalid.append(str(label))
+            continue
+        if count < 0:
+            invalid.append(str(label))
+            continue
+        parsed.append((parsed_range[0], parsed_range[1], str(label), count))
+
+    lines: List[str] = []
+    if invalid:
+        lines.append(f"⚠ Invalid bucket definitions: {', '.join(sorted(set(invalid)))}")
+
+    if not parsed:
+        if not lines:
+            lines.append("Probability bucket telemetry unavailable.")
+        return lines
+
+    parsed.sort(key=lambda item: (item[0], item[1]))
+    total = sum(count for _, _, _, count in parsed)
+    lines.append(
+        f"{len(parsed)} ranges covering {parsed[0][0]:.2f}–{parsed[-1][1]:.2f} (total {total})."
+    )
+
+    if parsed[0][0] > PROBABILITY_BUCKET_TOLERANCE:
+        lines.append("⚠ Coverage does not start near 0.0 — low probabilities untracked.")
+    if parsed[-1][1] < 1.0 - PROBABILITY_BUCKET_TOLERANCE:
+        lines.append("⚠ Coverage stops before 1.0 — high probabilities trimmed.")
+
+    previous_upper = 0.0
+    overlaps = False
+    for lower, upper, label, _ in parsed:
+        if lower + PROBABILITY_BUCKET_TOLERANCE < previous_upper:
+            lines.append(f"⚠ Bucket {label} overlaps with an earlier range.")
+            overlaps = True
+        previous_upper = max(previous_upper, upper)
+    if not overlaps and len(lines) == 1:
+        lines.append("Probability bucket ranges appear ordered and non-overlapping.")
+
+    last_prob = stats.get("last_probability")
+    latest_probability: Optional[float] = None
+    try:
+        if last_prob is not None:
+            latest_probability = float(last_prob)
+    except (TypeError, ValueError):
+        latest_probability = None
+    if latest_probability is None:
+        _, _, latest_probability = _latest_recent_alert(stats)
+
+    if latest_probability is not None:
+        match = next(
+            (
+                (label, count)
+                for lower, upper, label, count in parsed
+                if lower - PROBABILITY_BUCKET_TOLERANCE
+                <= latest_probability
+                <= upper + PROBABILITY_BUCKET_TOLERANCE
+            ),
+            None,
+        )
+        if match:
+            label, count = match
+            lines.append(
+                f"Latest alert probability {latest_probability:.3f} falls in {label} ({count} events)."
+            )
+            if count == 0:
+                lines.append(
+                    f"⚠ Bucket {label} reports zero events despite the latest alert falling within it."
+                )
+        else:
+            lines.append(
+                f"⚠ Latest alert probability {latest_probability:.3f} not covered by any bucket."
+            )
+
+    return lines
+
+
+def summarize_recent_alignment(stats: Dict) -> List[str]:
+    latest_time, latest_reason, latest_probability = _latest_recent_alert(stats)
+    minute_counts = stats.get("minute_counts") if isinstance(stats.get("minute_counts"), dict) else {}
+    reason_counts = stats.get("reason_counts") if isinstance(stats.get("reason_counts"), dict) else {}
+    lines: List[str] = []
+
+    if latest_time is None:
+        return ["No valid recent alerts found to cross-check."]
+
+    minute_label = (
+        latest_time.astimezone(timezone.utc)
+        .replace(second=0, microsecond=0)
+        .strftime(MINUTE_FORMAT)
+    )
+    bucket_value = minute_counts.get(minute_label)
+    if bucket_value is None:
+        lines.append(
+            f"⚠ minute_counts missing bucket for {minute_label} covering the latest alert."
+        )
+    else:
+        try:
+            numeric_bucket = int(bucket_value)
+        except (TypeError, ValueError):
+            lines.append(
+                f"⚠ minute_counts entry for {minute_label} not numeric ({bucket_value!r})."
+            )
+        else:
+            lines.append(
+                f"{minute_label} recorded {numeric_bucket} alert(s) in minute_counts."
+            )
+            if numeric_bucket <= 0:
+                lines.append(
+                    f"⚠ minute_counts shows zero alerts for {minute_label} despite a captured alert."
+                )
+
+    reason_candidates = {
+        candidate.strip()
+        for candidate in (
+            latest_reason,
+            stats.get("last_reason"),
+            stats.get("last_canonical_reason"),
+        )
+        if isinstance(candidate, str) and candidate.strip()
+    }
+    if reason_candidates:
+        matched = next(
+            (
+                (reason, reason_counts.get(reason))
+                for reason in reason_candidates
+                if isinstance(reason_counts.get(reason), (int, float))
+                and int(reason_counts.get(reason)) > 0
+            ),
+            None,
+        )
+        if matched:
+            reason, count = matched
+            lines.append(f"Reason '{reason}' tallied at {int(count)} occurrence(s).")
+        else:
+            lines.append(
+                "⚠ Latest alert reason not reflected in reason_counts aggregates."
+            )
+    else:
+        lines.append("Latest alert reason unavailable for reconciliation.")
+
+    if latest_probability is not None:
+        lines.append(f"Latest alert probability: {latest_probability:.3f}")
+
+    return lines
+
+
 def collect_integrity_alerts(stats: Dict) -> List[str]:
     if not isinstance(stats, dict) or not stats:
         return [
@@ -541,6 +749,27 @@ def collect_integrity_alerts(stats: Dict) -> List[str]:
 
     def flag(message: str) -> None:
         alerts.append(f"⚠ {message}")
+
+    latest_time, latest_reason, helper_probability = _latest_recent_alert(stats)
+    probability_to_check: Optional[float] = helper_probability
+    try:
+        last_probability = stats.get("last_probability")
+        if probability_to_check is None and last_probability is not None:
+            probability_to_check = float(last_probability)
+    except (TypeError, ValueError):
+        probability_to_check = helper_probability
+
+    last_reason = stats.get("last_reason")
+    if not isinstance(last_reason, str) or not last_reason.strip():
+        last_reason = None
+    else:
+        last_reason = last_reason.strip()
+
+    canonical_reason = stats.get("last_canonical_reason")
+    if not isinstance(canonical_reason, str) or not canonical_reason.strip():
+        canonical_reason = None
+    else:
+        canonical_reason = canonical_reason.strip()
 
     total_alerts = stats.get("total_alerts")
     total_value: Optional[int] = None
@@ -586,6 +815,42 @@ def collect_integrity_alerts(stats: Dict) -> List[str]:
             flag(
                 f"Reason aggregates ({reason_total}) diverge from total alerts ({total_value})."
             )
+        reason_candidates = {
+            candidate
+            for candidate in (latest_reason, last_reason, canonical_reason)
+            if candidate
+        }
+        if reason_candidates and not any(
+            int(reason_counts.get(candidate, 0)) > 0
+            for candidate in reason_candidates
+            if isinstance(reason_counts.get(candidate), (int, float))
+        ):
+            flag("Latest alert reason missing from reason_counts telemetry.")
+
+    minute_counts = stats.get("minute_counts")
+    if isinstance(minute_counts, dict) and latest_time is not None:
+        minute_label = (
+            latest_time.astimezone(timezone.utc)
+            .replace(second=0, microsecond=0)
+            .strftime(MINUTE_FORMAT)
+        )
+        bucket_value = minute_counts.get(minute_label)
+        if bucket_value is None:
+            flag(
+                f"minute_counts missing {minute_label} bucket corresponding to the latest alert."
+            )
+        else:
+            try:
+                numeric_bucket = int(bucket_value)
+            except (TypeError, ValueError):
+                flag(
+                    f"minute_counts bucket {minute_label} not numeric ({bucket_value!r})."
+                )
+            else:
+                if numeric_bucket <= 0:
+                    flag(
+                        f"minute_counts bucket {minute_label} reports zero despite a recent alert."
+                    )
 
     def _check_probability(field: str, label: str) -> None:
         value = stats.get(field)
@@ -602,6 +867,59 @@ def collect_integrity_alerts(stats: Dict) -> List[str]:
     _check_probability("last_probability", "Last alert probability")
     _check_probability("average_probability", "Average probability")
     _check_probability("recent_probability_average", "Recent probability average")
+
+    probability_buckets = stats.get("probability_buckets")
+    if isinstance(probability_buckets, dict) and probability_buckets:
+        parsed: List[Tuple[float, float, str, int]] = []
+        invalid: List[str] = []
+        for label, raw_count in probability_buckets.items():
+            parsed_range = _parse_probability_bucket(label)
+            if parsed_range is None:
+                invalid.append(str(label))
+                continue
+            try:
+                count = int(raw_count)
+            except (TypeError, ValueError):
+                invalid.append(str(label))
+                continue
+            parsed.append((parsed_range[0], parsed_range[1], str(label), count))
+
+        if invalid:
+            flag(f"Probability bucket definitions invalid: {', '.join(sorted(set(invalid)))}")
+
+        if parsed:
+            parsed.sort(key=lambda item: (item[0], item[1]))
+            if parsed[0][0] > PROBABILITY_BUCKET_TOLERANCE:
+                flag("Probability buckets skip the lowest probability range.")
+            if parsed[-1][1] < 1.0 - PROBABILITY_BUCKET_TOLERANCE:
+                flag("Probability buckets do not extend to 1.0; high-confidence data trimmed.")
+            previous_upper = 0.0
+            for lower, upper, label, _ in parsed:
+                if lower + PROBABILITY_BUCKET_TOLERANCE < previous_upper:
+                    flag(f"Probability bucket {label} overlaps an earlier range.")
+                previous_upper = max(previous_upper, upper)
+
+            if probability_to_check is not None:
+                match = next(
+                    (
+                        (label, count)
+                        for lower, upper, label, count in parsed
+                        if lower - PROBABILITY_BUCKET_TOLERANCE
+                        <= probability_to_check
+                        <= upper + PROBABILITY_BUCKET_TOLERANCE
+                    ),
+                    None,
+                )
+                if match is None:
+                    flag(
+                        "Latest alert probability not represented in probability buckets; reducer lagging."
+                    )
+                else:
+                    label, count = match
+                    if count <= 0:
+                        flag(
+                            f"Probability bucket {label} reports zero events despite the latest alert falling within it."
+                        )
 
     model_health = stats.get("model_health")
     info = stats.get("model_info") if isinstance(stats.get("model_info"), dict) else {}
@@ -735,6 +1053,8 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
     health_summary = format_health_log_summary()
     health_tail = format_health_log_tail()
     integrity_alerts = collect_integrity_alerts(stats)
+    probability_coverage = analyze_probability_coverage(stats)
+    recent_alignment = summarize_recent_alignment(stats)
     freshness = format_file_freshness(
         [
             ("Alert telemetry", ALERT_STATS),
@@ -802,6 +1122,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
             [
                 "Press V to run a health check without restarting services.",
                 "Press J to inspect the full health check log.",
+                "Press 0 to open raw alert telemetry for deep inspection.",
                 "Use [?] for additional maintenance automation shortcuts.",
             ],
         ),
@@ -817,6 +1138,8 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
             "Resilience",
             [
                 ("Telemetry Integrity", integrity_alerts),
+                ("Probability Coverage", probability_coverage),
+                ("Recent Alert Alignment", recent_alignment),
                 ("File Freshness", freshness),
                 (
                     "Mitigation Guidance",
@@ -986,6 +1309,7 @@ def main(stdscr: "curses._CursesWindow") -> None:
             ("s", ("View GA Tech syscall log", lambda: open_log(stdscr, DEFAULT_LOGS["ga_syscall"]))),
             ("t", ("View threat feed log", lambda: open_log(stdscr, DEFAULT_LOGS["threat_feed"]))),
             ("j", ("View health check log", lambda: open_log(stdscr, HEALTH_LOG))),
+            ("0", ("View raw alert telemetry", lambda: open_log(stdscr, ALERT_STATS))),
             ("l", ("View incident analytics log", lambda: open_log(stdscr, DEFAULT_LOGS["incident"]))),
             ("c", ("Open nn_ids.conf", lambda: open_config(stdscr))),
             ("n", ("Toggle notifications", lambda: toggle_config_bool("NN_IDS_NOTIFY"))),
