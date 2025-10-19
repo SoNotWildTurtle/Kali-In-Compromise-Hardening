@@ -20,7 +20,7 @@ import stat
 import subprocess
 import textwrap
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple, Set
@@ -73,6 +73,14 @@ LOGROTATE_STATE_TIME_FORMATS: Sequence[str] = (
 )
 LOGROTATE_ROTATION_STALE = timedelta(days=2)
 LOGROTATE_STATE_CLOCK_SKEW = timedelta(minutes=5)
+SYSTEMD_TIMESTAMP_FORMATS: Sequence[str] = (
+    "%a %Y-%m-%d %H:%M:%S %Z",
+    "%a %Y-%m-%d %H:%M:%S %z",
+    "%Y-%m-%d %H:%M:%S %Z",
+    "%Y-%m-%d %H:%M:%S %z",
+)
+LOGROTATE_TIMER_MAX_INTERVAL = timedelta(days=2)
+LOGROTATE_TIMER_GRACE = timedelta(hours=6)
 SECURE_LOG_GROUPS = {"adm", "root"}
 LOGROTATE_REQUIRED_DIRECTIVES = {
     "daily",
@@ -123,6 +131,7 @@ class UnitStateInfo:
     sub_state: str
     unit_file_state: str
     detail: Optional[str] = None
+    properties: Dict[str, str] = field(default_factory=dict)
 
 CONFIG_BOOL_KEYS = {
     "NN_IDS_NOTIFY": "Notifications",
@@ -400,6 +409,100 @@ def _parse_logrotate_state(text: str) -> Tuple[Dict[str, datetime], List[str]]:
     return entries, warnings
 
 
+def _parse_systemd_timestamp(value: str) -> Optional[datetime]:
+    cleaned = (value or "").strip()
+    if not cleaned or cleaned.lower() == "n/a":
+        return None
+    if cleaned.isdigit():
+        try:
+            micros = int(cleaned)
+        except ValueError:
+            pass
+        else:
+            if micros <= 0:
+                return None
+            return datetime.fromtimestamp(micros / 1_000_000, tz=timezone.utc)
+
+    for fmt in SYSTEMD_TIMESTAMP_FORMATS:
+        try:
+            parsed = datetime.strptime(cleaned, fmt)
+        except ValueError:
+            continue
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        else:
+            parsed = parsed.astimezone(timezone.utc)
+        return parsed
+
+    try:
+        parsed = datetime.fromisoformat(cleaned)
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    else:
+        parsed = parsed.astimezone(timezone.utc)
+    return parsed
+
+
+def _describe_logrotate_timer_schedule(properties: Dict[str, str]) -> List[str]:
+    lines: List[str] = []
+    now = datetime.now(timezone.utc)
+
+    schedule_raw = (
+        properties.get("OnCalendar")
+        or properties.get("TimersCalendar")
+        or ""
+    )
+    schedule_clean = " ".join(schedule_raw.split())
+    if schedule_clean and schedule_clean.lower() != "n/a":
+        lines.append(f"Schedule: {schedule_clean}.")
+    else:
+        lines.append("⚠ logrotate.timer OnCalendar schedule unavailable; inspect the unit file.")
+
+    last_trigger = _parse_systemd_timestamp(properties.get("LastTriggerUSec", ""))
+    if last_trigger is None:
+        lines.append("⚠ logrotate.timer has not triggered yet; run systemctl start logrotate.timer.")
+    else:
+        skew = last_trigger - now
+        if skew > LOGROTATE_STATE_CLOCK_SKEW:
+            lines.append(
+                f"⚠ logrotate.timer last trigger {last_trigger.isoformat()} is {_format_duration(skew)} ahead of the system clock."
+            )
+        age = now - last_trigger
+        if age >= timedelta(0):
+            lines.append(f"Last triggered {_format_duration(age)} ago.")
+            if age > LOGROTATE_ROTATION_STALE + LOGROTATE_TIMER_GRACE:
+                lines.append(
+                    f"⚠ logrotate.timer last trigger {_format_duration(age)} ago exceeds daily cadence; investigate the schedule."
+                )
+        else:
+            lines.append(
+                f"⚠ logrotate.timer last trigger scheduled in {_format_duration(-age)}; verify system time alignment."
+            )
+
+    next_trigger = _parse_systemd_timestamp(
+        properties.get("NextElapseUSecRealtime", "")
+    )
+    if next_trigger is None:
+        lines.append("⚠ logrotate.timer next run unknown; verify OnCalendar configuration.")
+    else:
+        delta = next_trigger - now
+        if delta < -LOGROTATE_STATE_CLOCK_SKEW:
+            lines.append(
+                f"⚠ logrotate.timer next run overdue by {_format_duration(-delta)}; reload or restart the timer."
+            )
+        else:
+            lines.append(f"Next run in {_format_duration(delta)}.")
+            if delta > LOGROTATE_TIMER_MAX_INTERVAL:
+                lines.append(
+                    f"⚠ logrotate.timer next run in {_format_duration(delta)} exceeds daily cadence; adjust the schedule."
+                )
+
+    return lines
+
+
 def _enumerate_insecure_log_ancestors(log_path: Path) -> Tuple[List[str], Optional[str]]:
     issues: List[str] = []
 
@@ -673,12 +776,15 @@ def find_script(name: str) -> Optional[str]:
     return shutil.which(name)
 
 
-def _query_unit_state(unit: str) -> Optional[UnitStateInfo]:
+def _query_unit_state(
+    unit: str, extra_properties: Sequence[str] = ()
+) -> Optional[UnitStateInfo]:
     if not shutil.which("systemctl"):
         return None
-    properties = ["LoadState", "ActiveState", "SubState", "UnitFileState"]
+    base_properties = ["LoadState", "ActiveState", "SubState", "UnitFileState"]
+    property_names = list(dict.fromkeys([*base_properties, *extra_properties]))
     cmd = ["systemctl", "show", unit, "--no-page"]
-    cmd.extend(f"--property={prop}" for prop in properties)
+    cmd.extend(f"--property={prop}" for prop in property_names)
     try:
         result = subprocess.run(
             cmd,
@@ -690,7 +796,7 @@ def _query_unit_state(unit: str) -> Optional[UnitStateInfo]:
     except OSError as exc:
         return UnitStateInfo("error", "", "", "", str(exc))
 
-    values: Dict[str, str] = {prop: "" for prop in properties}
+    values: Dict[str, str] = {prop: "" for prop in property_names}
     for line in (result.stdout or "").splitlines():
         if "=" not in line:
             continue
@@ -729,6 +835,7 @@ def _query_unit_state(unit: str) -> Optional[UnitStateInfo]:
         sub_state=values.get("SubState", "") or "",
         unit_file_state=values.get("UnitFileState", "") or "",
         detail=detail,
+        properties={prop: values.get(prop, "") for prop in extra_properties},
     )
 
 
@@ -1948,11 +2055,20 @@ def analyze_logrotate_scheduler() -> List[str]:
     lines: List[str] = []
     timer_ok = False
     cron_ok = False
+    schedule_lines: List[str] = []
 
     systemctl_available = shutil.which("systemctl") is not None
 
     if systemctl_available:
-        timer_info = _query_unit_state(LOGROTATE_TIMER_UNIT)
+        timer_info = _query_unit_state(
+            LOGROTATE_TIMER_UNIT,
+            (
+                "LastTriggerUSec",
+                "NextElapseUSecRealtime",
+                "OnCalendar",
+                "TimersCalendar",
+            ),
+        )
         enable_state = _enablement_from_systemctl(LOGROTATE_TIMER_UNIT).lower()
         status = _format_unit_status(timer_info)
         load_state = timer_info.load_state.lower() if timer_info else "unknown"
@@ -1991,6 +2107,11 @@ def analyze_logrotate_scheduler() -> List[str]:
             else:
                 lines.append(
                     f"⚠ logrotate.timer {status}; start it with systemctl enable --now logrotate.timer."
+                )
+
+            if timer_info and load_state == "loaded":
+                schedule_lines.extend(
+                    _describe_logrotate_timer_schedule(timer_info.properties)
                 )
 
         service_info = _query_unit_state(LOGROTATE_SERVICE_UNIT)
@@ -2043,6 +2164,8 @@ def analyze_logrotate_scheduler() -> List[str]:
         lines.append(
             "⚠ No logrotate scheduler detected; enable logrotate.timer or deploy /etc/cron.daily/logrotate."
         )
+
+    lines.extend(schedule_lines)
 
     return lines
 
