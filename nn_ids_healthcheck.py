@@ -19,6 +19,7 @@ MINUTE_FORMAT = "%Y-%m-%dT%H:%MZ"
 RECENT_ALERT_MAX_ENTRIES = 512
 RECENT_ALERT_TOLERANCE = timedelta(seconds=60)
 PROBABILITY_TOLERANCE = 0.01
+DRIFT_BOUND = 1.0
 
 CRITICAL_SERVICES: Sequence[Tuple[str, str]] = (
     ("nn_ids.service", "Neural IDS inference service"),
@@ -790,9 +791,20 @@ def check_alert_stats(
     healthy = healthy and peak_ok
 
     for field, label, minimum, maximum in (
-        ("model_drift_delta", "Model drift delta", None, None),
-        ("global_probability_trend", "Global probability trend", None, None),
-        ("prob_stddev", "Probability standard deviation", 0.0, None),
+        (
+            "model_drift_delta",
+            "Model drift delta",
+            -DRIFT_BOUND,
+            DRIFT_BOUND,
+        ),
+        (
+            "global_probability_trend",
+            "Global probability trend",
+            -DRIFT_BOUND,
+            DRIFT_BOUND,
+        ),
+        ("prob_stddev", "Probability standard deviation", 0.0, 1.0),
+        ("average_probability", "Average probability", 0.0, 1.0),
         ("global_ewma_probability", "Global EWMA probability", 0.0, 1.0),
         ("recent_probability_average", "Recent probability average", 0.0, 1.0),
     ):
@@ -822,6 +834,12 @@ def check_alert_stats(
                 healthy = False
             if peak_minute_count is not None:
                 bucket_value = minute_counts.get(peak_minute_label)
+                if bucket_value is None:
+                    logger(
+                        "peak_minute_label not present in minute_counts;"
+                        " telemetry may be desynchronised"
+                    )
+                    healthy = False
                 if bucket_value is not None and bucket_value != peak_minute_count:
                     logger(
                         "peak_minute_count does not match stored minute_counts bucket"
@@ -840,6 +858,66 @@ def check_alert_stats(
             healthy = False
         if alerts_last_hour is not None and peak_minute_count > alerts_last_hour:
             logger("Peak minute count exceeds last-hour aggregate")
+            healthy = False
+
+    recent_history, history_ok = _extract_counter_map(
+        data,
+        "recent_alert_history",
+        "Recent alert history",
+        logger,
+        required=False,
+        max_entries=512,
+    )
+    healthy = healthy and history_ok
+    if history_ok and recent_history:
+        history_total = sum(recent_history.values())
+        if history_total < 0:
+            logger("Recent alert history produced negative totals")
+            healthy = False
+        elif (
+            alerts_last_hour is not None
+            and history_total < alerts_last_hour
+        ):
+            logger(
+                "Recent alert history under-reports alerts seen in the last hour;"
+                " telemetry retention window too small?"
+            )
+            healthy = False
+
+    probability_buckets, buckets_ok = _extract_counter_map(
+        data,
+        "probability_buckets",
+        "Probability buckets",
+        logger,
+        required=False,
+        max_entries=32,
+    )
+    healthy = healthy and buckets_ok
+    if buckets_ok and probability_buckets and total_alerts is not None:
+        bucket_total = sum(probability_buckets.values())
+        if bucket_total != total_alerts:
+            logger(
+                "Probability bucket aggregation does not match total alerts;"
+                " investigate telemetry reducer"
+            )
+            healthy = False
+
+    hourly_distribution, hourly_ok = _extract_counter_map(
+        data,
+        "hourly_distribution",
+        "Hourly alert distribution",
+        logger,
+        required=False,
+        max_entries=48,
+    )
+    healthy = healthy and hourly_ok
+    if hourly_ok and hourly_distribution and alerts_last_hour is not None:
+        hourly_total = sum(hourly_distribution.values())
+        if hourly_total < alerts_last_hour:
+            logger(
+                "Hourly distribution totals fewer alerts than the last-hour aggregate;"
+                " history window may be truncated"
+            )
             healthy = False
 
     model_health = data.get("model_health")

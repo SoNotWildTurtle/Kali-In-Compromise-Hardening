@@ -14,11 +14,12 @@ import shutil
 import subprocess
 import textwrap
 from collections import OrderedDict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 ALERT_STATS = Path("/var/lib/nn_ids/alert_stats.json")
+MODEL_PATH = Path("/opt/nnids/ids_model.pkl")
 CONFIG_CANDIDATES = [
     Path("/etc/nn_ids.conf"),
     Path(__file__).resolve().parent / "nn_ids.conf",
@@ -39,6 +40,7 @@ DEFAULT_LOGS: Dict[str, Path] = {
     "autoblock": Path("/var/log/nn_ids_autoblock.log"),
     "incident": INCIDENT_REPORT,
 }
+RECENT_ALERT_MAX_ENTRIES = 512
 
 SERVICES: Sequence[Tuple[str, str]] = (
     ("nn_ids.service", "Neural IDS"),
@@ -68,6 +70,23 @@ CONFIG_BOOL_KEYS = {
 }
 
 DISCOVERY_SEQUENCE = ["auto", "manual", "notify", "none"]
+
+
+def _format_duration(delta: timedelta) -> str:
+    seconds = int(max(delta.total_seconds(), 0))
+    days, remainder = divmod(seconds, 86_400)
+    hours, remainder = divmod(remainder, 3_600)
+    minutes, seconds = divmod(remainder, 60)
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+    if not parts:
+        parts.append(f"{seconds}s")
+    return " ".join(parts)
 
 
 def load_json(path: Path) -> Dict:
@@ -325,20 +344,26 @@ def format_compact_top(mapping: Dict, label: str, limit: int = 5) -> str:
     return f"{label}: {', '.join(parts)}"
 
 
-def _parse_time(value: Optional[str]) -> Optional[str]:
-    if not value:
+def _coerce_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value or not isinstance(value, str):
         return None
     try:
         if value.endswith("Z"):
-            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        else:
-            dt = datetime.fromisoformat(value)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        local = dt.astimezone()
-        return local.strftime("%Y-%m-%d %H:%M:%S %Z")
+            value = value[:-1] + "+00:00"
+        dt = datetime.fromisoformat(value)
     except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _parse_time(value: Optional[str]) -> Optional[str]:
+    dt = _coerce_datetime(value)
+    if dt is None:
         return value
+    local = dt.astimezone()
+    return local.strftime("%Y-%m-%d %H:%M:%S %Z")
 
 
 def format_recent_alerts(stats: Dict, limit: int = 5) -> List[str]:
@@ -506,6 +531,123 @@ def format_distributions(stats: Dict) -> List[str]:
     return distributions
 
 
+def collect_integrity_alerts(stats: Dict) -> List[str]:
+    if not isinstance(stats, dict) or not stats:
+        return [
+            "Telemetry unavailable — run the health check (press V) to repopulate data.",
+        ]
+
+    alerts: List[str] = []
+
+    def flag(message: str) -> None:
+        alerts.append(f"⚠ {message}")
+
+    total_alerts = stats.get("total_alerts")
+    total_value: Optional[int] = None
+    if isinstance(total_alerts, int):
+        if total_alerts < 0:
+            flag("Total alerts counter reported as negative; investigate telemetry writer.")
+        else:
+            total_value = total_alerts
+    else:
+        flag("Total alerts counter missing from telemetry.")
+
+    recent = stats.get("recent_alerts")
+    if isinstance(recent, list) and len(recent) > RECENT_ALERT_MAX_ENTRIES:
+        flag(
+            f"recent_alerts contains {len(recent)} entries (expected ≤ {RECENT_ALERT_MAX_ENTRIES}); trim policy failing."
+        )
+    elif recent is not None and not isinstance(recent, list):
+        flag("recent_alerts field is not a list; telemetry JSON corrupted?")
+
+    last_alert_dt = _coerce_datetime(stats.get("last_alert"))
+    if total_value and last_alert_dt is None:
+        flag("Alerts recorded but last_alert timestamp missing or invalid.")
+    if last_alert_dt is not None:
+        age = datetime.now(timezone.utc) - last_alert_dt
+        if age > timedelta(hours=1):
+            flag(
+                f"Last alert observed {_format_duration(age)} ago; capture pipeline may be stalled."
+            )
+
+    alerts_last_hour = stats.get("alerts_last_hour")
+    if isinstance(alerts_last_hour, int) and total_value is not None:
+        if alerts_last_hour > total_value:
+            flag("alerts_last_hour exceeds total alerts; counters diverging.")
+
+    reason_counts = stats.get("reason_counts")
+    if isinstance(reason_counts, dict) and total_value is not None:
+        reason_total = sum(
+            int(value)
+            for value in reason_counts.values()
+            if isinstance(value, (int, float))
+        )
+        if reason_total != total_value:
+            flag(
+                f"Reason aggregates ({reason_total}) diverge from total alerts ({total_value})."
+            )
+
+    def _check_probability(field: str, label: str) -> None:
+        value = stats.get(field)
+        if value is None:
+            return
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            flag(f"{label} is not numeric ({value!r}).")
+            return
+        if not 0.0 <= number <= 1.0:
+            flag(f"{label} {number:.3f} outside [0, 1] range.")
+
+    _check_probability("last_probability", "Last alert probability")
+    _check_probability("average_probability", "Average probability")
+    _check_probability("recent_probability_average", "Recent probability average")
+
+    model_health = stats.get("model_health")
+    info = stats.get("model_info") if isinstance(stats.get("model_info"), dict) else {}
+    if isinstance(info, dict) and info.get("health"):
+        model_health = info.get("health")
+    if isinstance(model_health, str) and model_health.lower() not in {"nominal", "healthy"}:
+        flag(f"Model health reports '{model_health}'.")
+    if isinstance(info, dict) and info.get("refresh_recommended"):
+        flag("Model refresh recommended flag is active.")
+
+    prob_stddev = stats.get("prob_stddev")
+    if prob_stddev is not None:
+        try:
+            std_value = float(prob_stddev)
+        except (TypeError, ValueError):
+            flag("Probability standard deviation not numeric.")
+        else:
+            if std_value < 0:
+                flag("Probability standard deviation reported as negative.")
+
+    if not alerts:
+        alerts.append("Telemetry appears consistent — no anomalies detected.")
+
+    return alerts
+
+
+def format_file_freshness(entries: Sequence[Tuple[str, Path]]) -> List[str]:
+    lines: List[str] = []
+    now = datetime.now(timezone.utc)
+    for label, path in entries:
+        if not path.exists():
+            lines.append(f"{label}: missing — {path}")
+            continue
+        try:
+            stat = path.stat()
+        except OSError as exc:
+            lines.append(f"{label}: unable to read metadata ({exc})")
+            continue
+        mtime = datetime.fromtimestamp(stat.st_mtime, timezone.utc)
+        age = now - mtime
+        lines.append(f"{label}: updated {_format_duration(age)} ago — {path}")
+    if not lines:
+        return ["No paths tracked yet."]
+    return lines
+
+
 def format_health_log_summary() -> List[str]:
     if not HEALTH_LOG.exists():
         return ["Health check log not found."]
@@ -592,6 +734,14 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
     operational_counters = format_operational_counters(stats)
     health_summary = format_health_log_summary()
     health_tail = format_health_log_tail()
+    integrity_alerts = collect_integrity_alerts(stats)
+    freshness = format_file_freshness(
+        [
+            ("Alert telemetry", ALERT_STATS),
+            ("IDS model", MODEL_PATH),
+            ("Health log", HEALTH_LOG),
+        ]
+    )
 
     summary_view = [
         ("Service Status", services),
@@ -663,6 +813,21 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
         ("Timeline", timeline_view),
         ("Operations", operations_view),
         ("Maintenance", maintenance_view),
+        (
+            "Resilience",
+            [
+                ("Telemetry Integrity", integrity_alerts),
+                ("File Freshness", freshness),
+                (
+                    "Mitigation Guidance",
+                    [
+                        "Run the health check (V) if telemetry anomalies persist.",
+                        "Use the action palette (?) to restart services after addressing issues.",
+                        "Review the health log (J) for full failure context.",
+                    ],
+                ),
+            ],
+        ),
     ]
 
 
