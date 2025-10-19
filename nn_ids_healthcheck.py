@@ -21,6 +21,9 @@ RECENT_ALERT_TOLERANCE = timedelta(seconds=60)
 PROBABILITY_TOLERANCE = 0.01
 PROBABILITY_BUCKET_TOLERANCE = 1e-6
 DRIFT_BOUND = 1.0
+MODEL_AGE_DAYS_TOLERANCE = 0.5
+MODEL_TIMESTAMP_TOLERANCE = timedelta(hours=2)
+MODEL_CLOCK_SKEW_TOLERANCE = timedelta(minutes=15)
 
 CRITICAL_SERVICES: Sequence[Tuple[str, str]] = (
     ("nn_ids.service", "Neural IDS inference service"),
@@ -471,6 +474,15 @@ def check_alert_stats(
         stat = None
 
     now = datetime.now(timezone.utc)
+    try:
+        model_stat = MODEL.stat()
+    except OSError:
+        model_stat = None
+    model_mtime = (
+        datetime.fromtimestamp(model_stat.st_mtime, timezone.utc)
+        if model_stat is not None
+        else None
+    )
     if stat is not None:
         mtime = datetime.fromtimestamp(stat.st_mtime, timezone.utc)
         age = now - mtime
@@ -1139,7 +1151,7 @@ def check_alert_stats(
             logger("model_info field has unexpected structure; expected object")
             healthy = False
         else:
-            _, age_ok = _validate_float_field(
+            age_days, age_ok = _validate_float_field(
                 model_info,
                 "age_days",
                 "Model info age (days)",
@@ -1157,6 +1169,7 @@ def check_alert_stats(
                 )
                 healthy = False
 
+            last_trained: Optional[datetime] = None
             last_trained_value = model_info.get("last_trained")
             if last_trained_value:
                 if not isinstance(last_trained_value, str):
@@ -1165,9 +1178,60 @@ def check_alert_stats(
                         f" {type(last_trained_value).__name__}"
                     )
                     healthy = False
-                elif _parse_timestamp(last_trained_value) is None:
-                    logger("model_info.last_trained is not a valid timestamp")
+                else:
+                    parsed_trained = _parse_timestamp(last_trained_value)
+                    if parsed_trained is None:
+                        logger("model_info.last_trained is not a valid timestamp")
+                        healthy = False
+                    else:
+                        last_trained = parsed_trained
+                        if last_trained > now + MODEL_CLOCK_SKEW_TOLERANCE:
+                            skew = last_trained - now
+                            logger(
+                                "model_info.last_trained timestamp is",
+                                f" {_format_duration(skew)} ahead of system clock;",
+                                " verify training pipeline time sync",
+                            )
+                            healthy = False
+            else:
+                logger("model_info.last_trained missing from telemetry metadata")
+                healthy = False
+
+            if model_mtime is None:
+                if MODEL.exists():
+                    logger(
+                        "Unable to reconcile model metadata with model artifact timestamp;"
+                        " inspect file permissions"
+                    )
+                else:
+                    logger(
+                        "Model artifact missing while model_info telemetry present;"
+                        " reconcile deployment state"
+                    )
+                healthy = False
+
+            if last_trained is not None and model_mtime is not None:
+                delta = last_trained - model_mtime
+                if delta < timedelta(0):
+                    delta = -delta
+                if delta > MODEL_TIMESTAMP_TOLERANCE:
+                    logger(
+                        "model_info.last_trained does not align with model file timestamp;"
+                        f" drift of {_format_duration(delta)} detected"
+                    )
                     healthy = False
+
+            if age_ok and age_days is not None:
+                reference = last_trained or model_mtime
+                if reference is not None:
+                    computed_age = max((now - reference).total_seconds() / 86_400.0, 0.0)
+                    if abs(computed_age - age_days) > MODEL_AGE_DAYS_TOLERANCE:
+                        logger(
+                            "model_info age_days diverges from recorded training timestamp by"
+                            f" {abs(computed_age - age_days):.2f} day(s);"
+                            " metadata refresh required"
+                        )
+                        healthy = False
 
             info_health = model_info.get("health")
             if info_health is not None:

@@ -44,6 +44,9 @@ RECENT_ALERT_MAX_ENTRIES = 512
 MINUTE_FORMAT = "%Y-%m-%dT%H:%MZ"
 PROBABILITY_BUCKET_TOLERANCE = 1e-6
 CLOCK_SKEW_TOLERANCE = timedelta(seconds=60)
+MODEL_CLOCK_SKEW_TOLERANCE = timedelta(minutes=15)
+MODEL_TIMESTAMP_TOLERANCE = timedelta(hours=2)
+MODEL_AGE_DAYS_TOLERANCE = 0.5
 
 SERVICES: Sequence[Tuple[str, str]] = (
     ("nn_ids.service", "Neural IDS"),
@@ -773,6 +776,94 @@ def analyze_hourly_distribution(stats: Dict) -> List[str]:
     return lines
 
 
+def analyze_model_alignment(stats: Dict) -> List[str]:
+    info = stats.get("model_info")
+    if not isinstance(info, dict):
+        return ["⚠ Model telemetry unavailable; unable to reconcile metadata with the artifact."]
+
+    lines: List[str] = []
+    now = datetime.now(timezone.utc)
+
+    last_trained_raw = info.get("last_trained")
+    last_trained: Optional[datetime] = None
+    if last_trained_raw:
+        if isinstance(last_trained_raw, str):
+            last_trained = _coerce_datetime(last_trained_raw)
+            if last_trained is None:
+                lines.append("⚠ model_info.last_trained could not be parsed as an ISO timestamp.")
+            else:
+                if last_trained > now + MODEL_CLOCK_SKEW_TOLERANCE:
+                    skew = last_trained - now
+                    lines.append(
+                        f"⚠ model_info.last_trained leads the system clock by {_format_duration(skew)}; check time sync."
+                    )
+        else:
+            lines.append("⚠ model_info.last_trained has unexpected type; telemetry writer regression suspected.")
+    else:
+        lines.append("⚠ model_info.last_trained missing from telemetry metadata.")
+
+    model_timestamp: Optional[datetime] = None
+    try:
+        stat = MODEL_PATH.stat()
+    except FileNotFoundError:
+        lines.append(f"⚠ Model artifact missing at {MODEL_PATH}.")
+    except OSError as exc:
+        lines.append(f"⚠ Unable to stat model artifact: {exc}.")
+    else:
+        model_timestamp = datetime.fromtimestamp(stat.st_mtime, timezone.utc)
+        age = now - model_timestamp
+        lines.append(f"Model artifact updated {_format_duration(age)} ago.")
+
+    if last_trained and model_timestamp:
+        delta = last_trained - model_timestamp
+        if delta < timedelta(0):
+            delta = -delta
+        if delta > MODEL_TIMESTAMP_TOLERANCE:
+            lines.append(
+                f"⚠ Model file timestamp differs from model_info.last_trained by {_format_duration(delta)}; metadata drift detected."
+            )
+        else:
+            lines.append(
+                f"Model metadata aligns with artifact timestamp (Δ {_format_duration(delta)})."
+            )
+    elif last_trained and not model_timestamp:
+        lines.append("⚠ Unable to verify model_info.last_trained without model artifact metadata.")
+    elif model_timestamp and not last_trained:
+        lines.append("⚠ Model artifact present but last_trained metadata missing for correlation.")
+
+    age_days_raw = info.get("age_days")
+    age_days: Optional[float] = None
+    if age_days_raw is not None:
+        try:
+            age_days = float(age_days_raw)
+        except (TypeError, ValueError):
+            lines.append("⚠ model_info.age_days is not numeric; telemetry reducer inconsistent.")
+        else:
+            if age_days < 0:
+                lines.append("⚠ model_info.age_days is negative; metadata corruption suspected.")
+            else:
+                reference = last_trained or model_timestamp
+                if reference is not None:
+                    computed_age = max((now - reference).total_seconds() / 86_400.0, 0.0)
+                    diff_days = abs(computed_age - age_days)
+                    if diff_days > MODEL_AGE_DAYS_TOLERANCE:
+                        lines.append(
+                            f"⚠ model_info.age_days ({age_days:.2f}d) diverges from recorded timestamps ({computed_age:.2f}d)."
+                        )
+                    else:
+                        lines.append(
+                            f"Model age telemetry ({age_days:.2f}d) matches recorded training time (Δ {diff_days:.2f}d)."
+                        )
+                else:
+                    lines.append(f"Reported model age: {age_days:.2f}d (no timestamp available for cross-check).")
+    else:
+        lines.append("⚠ model_info.age_days missing; staleness tracking unavailable.")
+
+    if not lines:
+        lines.append("Model metadata appears internally consistent.")
+    return lines
+
+
 def summarize_recent_alignment(stats: Dict) -> List[str]:
     latest_time, latest_reason, latest_probability = _latest_recent_alert(stats)
     minute_counts = stats.get("minute_counts") if isinstance(stats.get("minute_counts"), dict) else {}
@@ -1261,6 +1352,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
     integrity_alerts = collect_integrity_alerts(stats)
     probability_coverage = analyze_probability_coverage(stats)
     hourly_coverage = analyze_hourly_distribution(stats)
+    model_alignment = analyze_model_alignment(stats)
     recent_alignment = summarize_recent_alignment(stats)
     timeline_integrity = analyze_timeline_integrity(stats)
     freshness = format_file_freshness(
@@ -1349,6 +1441,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
                 ("Timeline Integrity", timeline_integrity),
                 ("Probability Coverage", probability_coverage),
                 ("Hourly Coverage", hourly_coverage),
+                ("Model Alignment", model_alignment),
                 ("Recent Alert Alignment", recent_alignment),
                 ("File Freshness", freshness),
                 (
