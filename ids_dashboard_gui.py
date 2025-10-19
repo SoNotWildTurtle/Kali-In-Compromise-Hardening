@@ -9,6 +9,7 @@ note when information is unavailable.
 from __future__ import annotations
 
 import curses
+import hashlib
 import json
 import shutil
 import subprocess
@@ -93,6 +94,21 @@ def _format_duration(delta: timedelta) -> str:
     if not parts:
         parts.append(f"{seconds}s")
     return " ".join(parts)
+
+
+def _compute_file_sha256(path: Path) -> Optional[str]:
+    """Return the SHA-256 digest for ``path`` or ``None`` when unreadable."""
+
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(65536), b""):
+                if not chunk:
+                    break
+                digest.update(chunk)
+    except OSError:
+        return None
+    return digest.hexdigest()
 
 
 def load_json(path: Path) -> Dict:
@@ -803,6 +819,7 @@ def analyze_model_alignment(stats: Dict) -> List[str]:
         lines.append("⚠ model_info.last_trained missing from telemetry metadata.")
 
     model_timestamp: Optional[datetime] = None
+    model_size: Optional[int] = None
     try:
         stat = MODEL_PATH.stat()
     except FileNotFoundError:
@@ -811,6 +828,7 @@ def analyze_model_alignment(stats: Dict) -> List[str]:
         lines.append(f"⚠ Unable to stat model artifact: {exc}.")
     else:
         model_timestamp = datetime.fromtimestamp(stat.st_mtime, timezone.utc)
+        model_size = stat.st_size
         age = now - model_timestamp
         lines.append(f"Model artifact updated {_format_duration(age)} ago.")
 
@@ -830,6 +848,65 @@ def analyze_model_alignment(stats: Dict) -> List[str]:
         lines.append("⚠ Unable to verify model_info.last_trained without model artifact metadata.")
     elif model_timestamp and not last_trained:
         lines.append("⚠ Model artifact present but last_trained metadata missing for correlation.")
+
+    artifact_size_raw = info.get("artifact_size")
+    artifact_size: Optional[int] = None
+    if artifact_size_raw is not None:
+        if isinstance(artifact_size_raw, bool) or not isinstance(artifact_size_raw, int):
+            lines.append("⚠ model_info.artifact_size has unexpected type; telemetry reducer regression suspected.")
+        elif artifact_size_raw < 0:
+            lines.append("⚠ model_info.artifact_size is negative; metadata corruption suspected.")
+        else:
+            artifact_size = int(artifact_size_raw)
+            if model_size is not None:
+                if artifact_size != model_size:
+                    lines.append(
+                        f"⚠ model_info.artifact_size ({artifact_size}) disagrees with artifact size on disk ({model_size})."
+                    )
+                else:
+                    lines.append(f"Model artifact size matches telemetry metadata ({artifact_size} bytes).")
+            else:
+                lines.append("⚠ Artifact size telemetry present but model artifact metadata unavailable for comparison.")
+    elif model_timestamp is not None:
+        lines.append("⚠ model_info.artifact_size missing; unable to verify artifact size against telemetry.")
+
+    artifact_hash_raw = info.get("artifact_sha256")
+    normalized_hash: Optional[str] = None
+    if artifact_hash_raw:
+        if isinstance(artifact_hash_raw, str):
+            candidate = artifact_hash_raw.strip().lower()
+            if len(candidate) != 64:
+                lines.append("⚠ model_info.artifact_sha256 must be a 64-character hexadecimal digest.")
+            else:
+                try:
+                    bytes.fromhex(candidate)
+                except ValueError:
+                    lines.append("⚠ model_info.artifact_sha256 is not valid hexadecimal; metadata corruption suspected.")
+                else:
+                    normalized_hash = candidate
+        else:
+            lines.append("⚠ model_info.artifact_sha256 has unexpected type; telemetry reducer regression suspected.")
+    elif model_timestamp is not None:
+        lines.append("⚠ model_info.artifact_sha256 missing; unable to validate artifact integrity against telemetry.")
+
+    computed_hash: Optional[str] = None
+    if normalized_hash is not None:
+        if model_size is None:
+            lines.append("⚠ model_info.artifact_sha256 provided but artifact metadata unavailable for comparison.")
+        else:
+            computed_hash = _compute_file_sha256(MODEL_PATH)
+            if computed_hash is None:
+                lines.append("⚠ Unable to compute model artifact hash for comparison with telemetry metadata.")
+            elif computed_hash != normalized_hash:
+                lines.append(
+                    "⚠ model_info.artifact_sha256 does not match the computed artifact hash; investigate potential tampering."
+                )
+            else:
+                lines.append("Model artifact hash matches telemetry metadata.")
+    elif artifact_hash_raw:
+        # Already reported above but ensure operators have guidance when validation could not run
+        if model_size is None:
+            lines.append("⚠ Unable to compare model_info.artifact_sha256 without artifact metadata.")
 
     age_days_raw = info.get("age_days")
     age_days: Optional[float] = None
@@ -862,7 +939,6 @@ def analyze_model_alignment(stats: Dict) -> List[str]:
     if not lines:
         lines.append("Model metadata appears internally consistent.")
     return lines
-
 
 def summarize_recent_alignment(stats: Dict) -> List[str]:
     latest_time, latest_reason, latest_probability = _latest_recent_alert(stats)

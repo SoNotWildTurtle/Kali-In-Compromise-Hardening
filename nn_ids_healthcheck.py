@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import shutil
@@ -177,6 +178,21 @@ def _parse_minute_bucket(value: str) -> Optional[datetime]:
     except ValueError:
         return None
     return parsed.replace(tzinfo=timezone.utc)
+
+
+def _compute_file_sha256(path: Path) -> Optional[str]:
+    """Return the SHA-256 hex digest for ``path`` or ``None`` on failure."""
+
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(65536), b""):
+                if not chunk:
+                    break
+                digest.update(chunk)
+    except OSError:
+        return None
+    return digest.hexdigest()
 
 
 def _parse_probability_bucket_label(label: str) -> Optional[Tuple[float, float]]:
@@ -483,6 +499,7 @@ def check_alert_stats(
         if model_stat is not None
         else None
     )
+    model_size = model_stat.st_size if model_stat is not None else None
     if stat is not None:
         mtime = datetime.fromtimestamp(stat.st_mtime, timezone.utc)
         age = now - mtime
@@ -1230,6 +1247,80 @@ def check_alert_stats(
                             "model_info age_days diverges from recorded training timestamp by"
                             f" {abs(computed_age - age_days):.2f} day(s);"
                             " metadata refresh required"
+                        )
+                        healthy = False
+
+            artifact_size_value = model_info.get("artifact_size")
+            artifact_size: Optional[int] = None
+            if artifact_size_value is not None:
+                if isinstance(artifact_size_value, bool) or not isinstance(
+                    artifact_size_value, int
+                ):
+                    logger(
+                        "model_info.artifact_size field has unexpected type",
+                        f" {type(artifact_size_value).__name__}",
+                    )
+                    healthy = False
+                elif artifact_size_value < 0:
+                    logger("model_info.artifact_size is negative; metadata corruption suspected")
+                    healthy = False
+                else:
+                    artifact_size = int(artifact_size_value)
+            elif model_mtime is not None:
+                logger("model_info.artifact_size missing from telemetry metadata")
+                healthy = False
+
+            if artifact_size is not None and model_size is not None:
+                if artifact_size != model_size:
+                    logger(
+                        "model_info.artifact_size does not match model artifact size;",
+                        " investigate deployment integrity",
+                    )
+                    healthy = False
+
+            artifact_hash_value = model_info.get("artifact_sha256")
+            normalized_hash: Optional[str] = None
+            if artifact_hash_value is not None:
+                if not isinstance(artifact_hash_value, str):
+                    logger(
+                        "model_info.artifact_sha256 field has unexpected type",
+                        f" {type(artifact_hash_value).__name__}",
+                    )
+                    healthy = False
+                else:
+                    candidate = artifact_hash_value.strip().lower()
+                    if len(candidate) != 64:
+                        logger(
+                            "model_info.artifact_sha256 must be a 64-character hex digest",
+                        )
+                        healthy = False
+                    else:
+                        try:
+                            bytes.fromhex(candidate)
+                        except ValueError:
+                            logger("model_info.artifact_sha256 contains non-hex characters")
+                            healthy = False
+                        else:
+                            normalized_hash = candidate
+            elif model_mtime is not None:
+                logger("model_info.artifact_sha256 missing from telemetry metadata")
+                healthy = False
+
+            if normalized_hash is not None:
+                if model_size is None:
+                    logger(
+                        "model_info.artifact_sha256 present but model artifact metadata unavailable",
+                    )
+                    healthy = False
+                else:
+                    computed_hash = _compute_file_sha256(MODEL)
+                    if computed_hash is None:
+                        logger("Unable to compute model artifact hash for comparison")
+                        healthy = False
+                    elif computed_hash != normalized_hash:
+                        logger(
+                            "model_info.artifact_sha256 does not match computed model artifact hash;",
+                            " investigate possible tampering",
                         )
                         healthy = False
 
