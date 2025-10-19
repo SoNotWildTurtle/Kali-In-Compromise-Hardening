@@ -43,6 +43,12 @@ CRITICAL_TIMERS: Sequence[Tuple[str, str]] = (
     ("nn_ids_restore.timer", "Self-heal scheduler"),
 )
 
+CONFIG_CANDIDATES: Sequence[Path] = (
+    Path("/etc/nn_ids.conf"),
+    Path("/opt/nnids/nn_ids.conf"),
+    Path(__file__).resolve().parent / "nn_ids.conf",
+)
+
 PROTECTED_PATHS: Sequence[Tuple[Path, str]] = (
     (ALERT_STATS.parent, "Alert telemetry directory"),
     (ALERT_STATS, "Alert telemetry"),
@@ -178,6 +184,28 @@ def restart_service(name: str) -> Tuple[bool, Optional[str]]:
     return False, detail
 
 
+def unit_enabled(unit: str) -> Tuple[bool, str]:
+    """Return whether a systemd unit is enabled and the reported state."""
+
+    if not SYSTEMCTL_AVAILABLE:
+        return False, "unknown"
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-enabled", unit],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as exc:
+        return False, f"error: {exc}"
+
+    output = (result.stdout or result.stderr or "").strip() or "disabled"
+    if result.returncode == 0:
+        return True, output
+    return False, output
+
+
 def check_services(
     logger: Callable[[str], None], restart: bool = True
 ) -> bool:
@@ -217,6 +245,40 @@ def check_timers(logger: Callable[[str], None]) -> bool:
         else:
             logger(f"{description} ({unit}) inactive")
             healthy = False
+    return healthy
+
+
+def check_unit_enablement(logger: Callable[[str], None]) -> bool:
+    """Verify that critical services and timers are enabled for startup."""
+
+    if not _systemctl_available(logger):
+        return True
+
+    healthy = True
+    checked: set[str] = set()
+    acceptable_states = {"enabled", "linked", "alias", "static", "indirect", "generated"}
+
+    for unit_group in (CRITICAL_SERVICES, CRITICAL_TIMERS):
+        for unit, description in unit_group:
+            if unit in checked:
+                continue
+            checked.add(unit)
+            enabled, state = unit_enabled(unit)
+            state_lower = state.lower()
+            if enabled or state_lower in acceptable_states:
+                logger(
+                    f"{description} ({unit}) enablement: {state_lower or 'enabled'}"
+                )
+                continue
+            healthy = False
+            if state_lower == "unknown":
+                logger(f"Unable to determine enablement for {description} ({unit})")
+            else:
+                logger(
+                    f"{description} ({unit}) not enabled (state: {state_lower});"
+                    " enable or intentionally mask to avoid startup gaps"
+                )
+
     return healthy
 
 
@@ -1465,6 +1527,25 @@ def check_filesystem_security(logger: Callable[[str], None]) -> bool:
         seen.add(path)
         if not _check_secure_path(path, label, logger):
             healthy = False
+
+    config_found = False
+    for candidate in CONFIG_CANDIDATES:
+        if not (candidate.exists() or candidate.is_symlink()):
+            continue
+        config_found = True
+        label = "IDS configuration" if candidate == CONFIG_CANDIDATES[0] else "IDS configuration candidate"
+        if not _check_secure_path(candidate, label, logger):
+            healthy = False
+        parent = candidate.parent
+        if parent not in seen:
+            seen.add(parent)
+            if not _check_secure_path(parent, "IDS configuration directory", logger):
+                healthy = False
+
+    if not config_found:
+        locations = ", ".join(str(path) for path in CONFIG_CANDIDATES)
+        logger(f"IDS configuration missing; expected one of: {locations}")
+        healthy = False
     return healthy
 
 
@@ -1502,6 +1583,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             check_services(logger, restart=not args.no_restart),
         ),
         ("Scheduled timers", check_timers(logger)),
+        ("Systemd enablement", check_unit_enablement(logger)),
         ("Filesystem hygiene", check_filesystem_security(logger)),
     ]
 

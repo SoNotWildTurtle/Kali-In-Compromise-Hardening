@@ -73,6 +73,9 @@ COLOR_ERROR = 2
 COLOR_WARN = 3
 COLOR_TITLE = 4
 
+ENABLEMENT_OK_STATES = {"enabled", "linked", "alias"}
+ENABLEMENT_ACCEPTABLE_STATES = {"static", "indirect", "generated"}
+
 CONFIG_BOOL_KEYS = {
     "NN_IDS_NOTIFY": "Notifications",
     "NN_IDS_SANITIZE": "Packet sanitization",
@@ -335,6 +338,23 @@ def _status_from_systemctl(unit: str) -> str:
     return "inactive"
 
 
+def _enablement_from_systemctl(unit: str) -> str:
+    if not shutil.which("systemctl"):
+        return "unknown"
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-enabled", unit],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError:
+        return "unknown"
+    output = (result.stdout or result.stderr or "").strip() or "disabled"
+    return output
+
+
 def gather_service_lines() -> List[Tuple[str, int]]:
     lines: List[Tuple[str, int]] = []
     for unit, label in SERVICES:
@@ -349,6 +369,30 @@ def gather_service_lines() -> List[Tuple[str, int]]:
         lines.append((f"{label}: {status}", color))
     if not lines:
         lines.append(("No systemd information available", COLOR_WARN))
+    return lines
+
+
+def gather_enablement_lines() -> List[Tuple[str, int]]:
+    lines: List[Tuple[str, int]] = []
+    seen: Set[str] = set()
+    for unit, label in SERVICES:
+        if unit in seen:
+            continue
+        seen.add(unit)
+        state = _enablement_from_systemctl(unit)
+        normalized = state.lower()
+        if normalized in ENABLEMENT_OK_STATES:
+            color = COLOR_SUCCESS
+        elif normalized in ENABLEMENT_ACCEPTABLE_STATES or normalized == "unknown":
+            color = COLOR_WARN
+        elif normalized.startswith("error"):
+            color = COLOR_WARN
+        else:
+            color = COLOR_ERROR
+        display = state or "unknown"
+        lines.append((f"{label}: {display}", color))
+    if not lines:
+        lines.append(("No enablement data available", COLOR_WARN))
     return lines
 
 
@@ -1479,6 +1523,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
     stats = load_json(ALERT_STATS)
     config_path, config = detect_config()
     services = gather_service_lines()
+    enablement = gather_enablement_lines()
     summary = format_summary(stats)
     model = format_model_health(stats)
     adversarial = format_adversarial(stats)
@@ -1505,16 +1550,21 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
             ("Health log", HEALTH_LOG),
         ]
     )
-    filesystem_hygiene = analyze_filesystem_hygiene(
-        [
-            ("Telemetry directory", ALERT_STATS.parent),
-            ("Alert telemetry", ALERT_STATS),
-            ("Model directory", MODEL_PATH.parent),
-            ("Model artifact", MODEL_PATH),
-            ("Health log directory", HEALTH_LOG.parent),
-            ("Health log", HEALTH_LOG),
-        ]
-    )
+    filesystem_entries: List[Tuple[str, Path]] = [
+        ("Telemetry directory", ALERT_STATS.parent),
+        ("Alert telemetry", ALERT_STATS),
+        ("Model directory", MODEL_PATH.parent),
+        ("Model artifact", MODEL_PATH),
+        ("Health log directory", HEALTH_LOG.parent),
+        ("Health log", HEALTH_LOG),
+    ]
+    if config_path:
+        filesystem_entries.append(("Config directory", config_path.parent))
+        filesystem_entries.append(("Configuration file", config_path))
+    else:
+        for candidate in CONFIG_CANDIDATES:
+            filesystem_entries.append(("Configuration candidate", candidate))
+    filesystem_hygiene = analyze_filesystem_hygiene(filesystem_entries)
 
     summary_view = [
         ("Service Status", services),
@@ -1576,6 +1626,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
                 "Press V to run a health check without restarting services.",
                 "Press J to inspect the full health check log.",
                 "Press 0 to open raw alert telemetry for deep inspection.",
+                "Review Unit Enablement under Resilience to confirm services auto-start.",
                 "Use [?] for additional maintenance automation shortcuts.",
             ],
         ),
@@ -1596,6 +1647,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
                 ("Hourly Coverage", hourly_coverage),
                 ("Model Alignment", model_alignment),
                 ("Recent Alert Alignment", recent_alignment),
+                ("Unit Enablement", enablement),
                 ("File Freshness", freshness),
                 ("Filesystem Hygiene", filesystem_hygiene),
                 (
@@ -1603,6 +1655,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
                     [
                         "Run the health check (V) if telemetry anomalies persist.",
                         "Use the action palette (?) to restart services after addressing issues.",
+                        "Enable any disabled units so IDS services recover automatically.",
                         "Review the health log (J) for full failure context.",
                     ],
                 ),
