@@ -9,6 +9,7 @@ note when information is unavailable.
 from __future__ import annotations
 
 import curses
+import fnmatch
 import hashlib
 import json
 import os
@@ -46,6 +47,27 @@ DEFAULT_LOGS: Dict[str, Path] = {
     "anti_wipe": Path("/var/log/anti_wipe_monitor.log"),
     "autoblock": Path("/var/log/nn_ids_autoblock.log"),
     "incident": INCIDENT_REPORT,
+}
+
+LOGROTATE_SAMPLE = Path(__file__).resolve().parent / "nn_ids_logrotate"
+LOGROTATE_CANDIDATES: List[Path] = [
+    Path("/etc/logrotate.d/nn_ids"),
+    Path("/etc/logrotate.d/nn-ids"),
+    Path("/etc/logrotate.d/nn_ids_health"),
+    LOGROTATE_SAMPLE,
+]
+LOGROTATE_TARGETS: List[Path] = [
+    Path("/var/log/nn_ids_alerts.log"),
+    Path("/var/log/nn_ids_health.log"),
+    Path("/var/log/nn_ids_report.log"),
+    Path("/var/log/nn_ids_train.log"),
+]
+LOGROTATE_REQUIRED_DIRECTIVES = {
+    "daily",
+    "missingok",
+    "notifempty",
+    "compress",
+    "delaycompress",
 }
 RECENT_ALERT_MAX_ENTRIES = 512
 MINUTE_FORMAT = "%Y-%m-%dT%H:%MZ"
@@ -218,6 +240,56 @@ def _describe_owner(uid: int, gid: int) -> str:
     return f"{user}:{group}"
 
 
+def _extract_logrotate_patterns(line: str) -> List[str]:
+    patterns: List[str] = []
+    for token in line.split():
+        cleaned = token.strip().strip('"')
+        if not cleaned or cleaned == "{":
+            continue
+        if cleaned.startswith("/"):
+            patterns.append(cleaned)
+    return patterns
+
+
+def _parse_logrotate_blocks(text: str) -> List[Tuple[str, List[str]]]:
+    blocks: List[Tuple[str, List[str]]] = []
+    current_patterns: List[str] = []
+    block_lines: List[str] = []
+    in_block = False
+
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        if not in_block:
+            if stripped.endswith("{") and stripped.startswith("/"):
+                current_patterns = _extract_logrotate_patterns(stripped[:-1])
+                block_lines = []
+                in_block = True
+                continue
+            if stripped.startswith("/"):
+                current_patterns = _extract_logrotate_patterns(stripped)
+                continue
+            if stripped == "{" and current_patterns:
+                block_lines = []
+                in_block = True
+                continue
+        else:
+            if stripped == "}":
+                for pattern in current_patterns:
+                    cleaned = pattern.strip()
+                    if cleaned:
+                        blocks.append((cleaned, list(block_lines)))
+                current_patterns = []
+                block_lines = []
+                in_block = False
+                continue
+            block_lines.append(stripped)
+
+    return blocks
+
+
 def load_json(path: Path) -> Dict:
     """Load a JSON file into a dict, returning an empty dict on failure."""
     try:
@@ -288,6 +360,13 @@ def resolve_config_path() -> Path:
     if path:
         return path
     return CONFIG_CANDIDATES[-1]
+
+
+def resolve_logrotate_path() -> Optional[Path]:
+    for candidate in LOGROTATE_CANDIDATES:
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def update_config_value(key: str, value: str) -> str:
@@ -1639,6 +1718,154 @@ def analyze_filesystem_hygiene(entries: Sequence[Tuple[str, Path]]) -> List[str]
     return lines
 
 
+def analyze_logrotate_config() -> List[str]:
+    """Inspect logrotate configuration for IDS log coverage and hygiene."""
+
+    lines: List[str] = []
+    config_path = resolve_logrotate_path()
+    candidate_text = ", ".join(str(path) for path in LOGROTATE_CANDIDATES[:-1])
+
+    if config_path is None:
+        lines.append(
+            f"⚠ Logrotate configuration not found; deploy policy under {candidate_text}."
+        )
+        if not shutil.which("logrotate"):
+            lines.append(
+                "⚠ logrotate binary missing; install it to prevent unchecked log growth."
+            )
+        return lines
+
+    if config_path == LOGROTATE_SAMPLE:
+        lines.append(
+            f"⚠ Sample logrotate policy detected at {config_path}; copy to {candidate_text}"
+            " so rotations execute automatically."
+        )
+        if not shutil.which("logrotate"):
+            lines.append(
+                "⚠ logrotate binary missing; install it to prevent unchecked log growth."
+            )
+        return lines
+
+    if not shutil.which("logrotate"):
+        lines.append(
+            "⚠ logrotate binary missing; install the package to enforce log retention."
+        )
+
+    lines.append(f"Policy: {config_path}")
+
+    try:
+        text = config_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"⚠ Unable to read logrotate configuration {config_path}: {exc}"]
+
+    blocks = _parse_logrotate_blocks(text)
+    if not blocks:
+        return [
+            f"⚠ {config_path} defines no log rotation blocks; add IDS log files to avoid growth.",
+        ]
+
+    for log_path in LOGROTATE_TARGETS:
+        matched_pattern: Optional[str] = None
+        block_lines: List[str] = []
+        for pattern, candidate_lines in blocks:
+            if fnmatch.fnmatch(str(log_path), pattern):
+                matched_pattern = pattern
+                block_lines = candidate_lines
+                break
+
+        if matched_pattern is None:
+            lines.append(
+                f"⚠ {log_path.name}: not covered by {config_path}; rotate manually or extend the policy."
+            )
+            continue
+
+        directives: Dict[str, str] = {}
+        for entry in block_lines:
+            if not entry or entry.startswith("#"):
+                continue
+            key = entry.split()[0].lower()
+            directives.setdefault(key, entry)
+
+        issues: List[str] = []
+        missing = sorted(
+            directive for directive in LOGROTATE_REQUIRED_DIRECTIVES if directive not in directives
+        )
+        if missing:
+            issues.append(f"missing {', '.join(missing)}")
+
+        retention_value: Optional[int] = None
+        rotate_line = directives.get("rotate")
+        if rotate_line:
+            parts = rotate_line.split()
+            if len(parts) < 2:
+                issues.append("rotate missing count")
+            else:
+                try:
+                    retention_value = int(parts[1])
+                    if retention_value < 3:
+                        issues.append(f"rotate {retention_value} too low")
+                except ValueError:
+                    issues.append(f"rotate '{parts[1]}' not numeric")
+        else:
+            issues.append("rotate directive absent")
+
+        create_line = directives.get("create")
+        mode_token: Optional[str] = None
+        owner: Optional[str] = None
+        group: Optional[str] = None
+        if create_line:
+            parts = create_line.split()
+            if len(parts) < 4:
+                issues.append("create incomplete")
+            else:
+                mode_token = parts[1]
+                owner = parts[2]
+                group = parts[3]
+                try:
+                    mode_value = int(mode_token, 8)
+                    if mode_value & stat.S_IWOTH:
+                        issues.append(f"mode {mode_token} world-writable")
+                    if mode_value & stat.S_IWGRP:
+                        issues.append(f"mode {mode_token} group-writable")
+                except ValueError:
+                    issues.append(f"mode '{mode_token}' invalid")
+                if owner != "root":
+                    issues.append(f"owner {owner}")
+                if group not in {"adm", "root"}:
+                    issues.append(f"group {group}")
+        else:
+            issues.append("create directive absent")
+
+        pattern_note = "" if matched_pattern == str(log_path) else f" via {matched_pattern}"
+        if issues:
+            lines.append(f"⚠ {log_path.name}: {'; '.join(issues)}{pattern_note}.")
+            continue
+
+        status_parts: List[str] = []
+        if retention_value is not None:
+            status_parts.append(f"rotate {retention_value}x")
+        status_parts.append("daily")
+        if mode_token and owner and group:
+            status_parts.append(f"create {mode_token} {owner}:{group}")
+        if not log_path.exists():
+            status_parts.append("log not created yet")
+        else:
+            try:
+                stat_result = log_path.stat()
+                size_kib = stat_result.st_size / 1024
+                status_parts.append(f"current size {size_kib:.1f} KiB")
+            except OSError:
+                status_parts.append("unable to stat log file")
+        if pattern_note:
+            status_parts.append(f"pattern {matched_pattern}")
+        lines.append(f"{log_path.name}: {', '.join(status_parts)}.")
+
+    if len(lines) == 1:
+        lines.append("All monitored logs are protected by logrotate.")
+
+    return lines
+
+
 def analyze_unit_availability(units: Sequence[Tuple[str, str]]) -> List[str]:
     if not shutil.which("systemctl"):
         return ["systemctl unavailable; cannot inspect unit load states."]
@@ -2050,6 +2277,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
         for candidate in CONFIG_CANDIDATES:
             filesystem_entries.append(("Configuration candidate", candidate))
     filesystem_hygiene = analyze_filesystem_hygiene(filesystem_entries)
+    logrotate_status = analyze_logrotate_config()
     config_integrity = analyze_config_integrity(
         config_path, config, config_duplicates, config_malformed
     )
@@ -2116,6 +2344,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
                 "Press 0 to open raw alert telemetry for deep inspection.",
                 "Review Configuration Integrity under Resilience after editing nn_ids.conf.",
                 "Review Unit Enablement under Resilience to confirm services auto-start.",
+                "Review Log Rotation under Resilience to confirm log retention policies.",
                 "Use [?] for additional maintenance automation shortcuts.",
             ],
         ),
@@ -2141,6 +2370,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
                 ("File Freshness", freshness),
                 ("Configuration Integrity", config_integrity),
                 ("Filesystem Hygiene", filesystem_hygiene),
+                ("Log Rotation", logrotate_status),
                 (
                     "Mitigation Guidance",
                     [
@@ -2233,6 +2463,17 @@ def open_config(stdscr: "curses._CursesWindow") -> str:
     return open_log(stdscr, path)
 
 
+def open_logrotate_config(stdscr: "curses._CursesWindow") -> str:
+    path = resolve_logrotate_path()
+    if path is None:
+        expected = ", ".join(str(candidate) for candidate in LOGROTATE_CANDIDATES[:-1])
+        return f"Logrotate configuration not found; expected under {expected}"
+    message = open_log(stdscr, path)
+    if path == LOGROTATE_SAMPLE:
+        return f"{message} — deploy this sample to /etc/logrotate.d to activate rotations"
+    return message
+
+
 def show_actions_palette(
     stdscr: "curses._CursesWindow", actions: "OrderedDict[str, Tuple[str, Callable[[], str]]]"
 ) -> Optional[str]:
@@ -2311,6 +2552,7 @@ def main(stdscr: "curses._CursesWindow") -> None:
             ("t", ("View threat feed log", lambda: open_log(stdscr, DEFAULT_LOGS["threat_feed"]))),
             ("j", ("View health check log", lambda: open_log(stdscr, HEALTH_LOG))),
             ("0", ("View raw alert telemetry", lambda: open_log(stdscr, ALERT_STATS))),
+            ("5", ("View logrotate policy", lambda: open_logrotate_config(stdscr))),
             ("l", ("View incident analytics log", lambda: open_log(stdscr, DEFAULT_LOGS["incident"]))),
             ("c", ("Open nn_ids.conf", lambda: open_config(stdscr))),
             ("n", ("Toggle notifications", lambda: toggle_config_bool("NN_IDS_NOTIFY"))),

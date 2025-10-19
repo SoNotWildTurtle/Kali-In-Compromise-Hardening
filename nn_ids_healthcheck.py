@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import math
@@ -13,6 +14,7 @@ import grp
 import shutil
 import stat
 import subprocess
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from dataclasses import dataclass
@@ -142,6 +144,30 @@ PROTECTED_PATHS: Sequence[Tuple[Path, str]] = (
     (LOG, "Health log"),
 )
 
+LOGROTATE_SAMPLE = Path(__file__).resolve().parent / "nn_ids_logrotate"
+
+LOGROTATE_CANDIDATES: Sequence[Path] = (
+    Path("/etc/logrotate.d/nn_ids"),
+    Path("/etc/logrotate.d/nn-ids"),
+    Path("/etc/logrotate.d/nn_ids_health"),
+    LOGROTATE_SAMPLE,
+)
+
+LOGROTATE_TARGETS: Sequence[Path] = (
+    Path("/var/log/nn_ids_alerts.log"),
+    Path("/var/log/nn_ids_health.log"),
+    Path("/var/log/nn_ids_report.log"),
+    Path("/var/log/nn_ids_train.log"),
+)
+
+LOGROTATE_REQUIRED_DIRECTIVES = {
+    "daily",
+    "missingok",
+    "notifempty",
+    "compress",
+    "delaycompress",
+}
+
 SYSTEMCTL_AVAILABLE = shutil.which("systemctl") is not None
 _SYSTEMCTL_WARNING_EMITTED = False
 
@@ -153,6 +179,11 @@ class UnitStateInfo:
     sub_state: str
     unit_file_state: str
     detail: Optional[str] = None
+
+
+class LogrotateBlock(NamedTuple):
+    pattern: str
+    lines: List[str]
 
 
 def create_logger(verbose: bool) -> Callable[[str], None]:
@@ -235,6 +266,189 @@ def _check_secure_path(
         logger(f"{label} permissions secure ({owner} {mode_text})")
 
     return healthy
+
+
+def _extract_logrotate_patterns(line: str) -> List[str]:
+    patterns: List[str] = []
+    for token in line.split():
+        cleaned = token.strip().strip('"')
+        if not cleaned or cleaned == "{":
+            continue
+        if cleaned.startswith("/"):
+            patterns.append(cleaned)
+    return patterns
+
+
+def _parse_logrotate_config(text: str) -> List[LogrotateBlock]:
+    blocks: List[LogrotateBlock] = []
+    current_patterns: List[str] = []
+    block_lines: List[str] = []
+    in_block = False
+
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        if not in_block:
+            if stripped.endswith("{") and stripped.startswith("/"):
+                current_patterns = _extract_logrotate_patterns(stripped[:-1])
+                block_lines = []
+                in_block = True
+                continue
+            if stripped.startswith("/"):
+                current_patterns = _extract_logrotate_patterns(stripped)
+                continue
+            if stripped == "{" and current_patterns:
+                block_lines = []
+                in_block = True
+                continue
+        else:
+            if stripped == "}":
+                for pattern in current_patterns:
+                    cleaned = pattern.strip()
+                    if cleaned:
+                        blocks.append(LogrotateBlock(cleaned, list(block_lines)))
+                current_patterns = []
+                block_lines = []
+                in_block = False
+                continue
+            block_lines.append(stripped)
+
+    return blocks
+
+
+def _validate_logrotate_block(
+    log_path: Path,
+    lines: Sequence[str],
+    logger: Callable[[str], None],
+) -> bool:
+    directives: Dict[str, str] = {}
+    for entry in lines:
+        if not entry or entry.startswith("#"):
+            continue
+        key = entry.split()[0].lower()
+        directives.setdefault(key, entry)
+
+    healthy = True
+    for directive in LOGROTATE_REQUIRED_DIRECTIVES:
+        if directive not in directives:
+            logger(
+                f"{log_path} rotation missing '{directive}' directive; update logrotate policy"
+            )
+            healthy = False
+
+    rotate_line = directives.get("rotate")
+    if rotate_line is None:
+        logger(f"{log_path} rotation missing 'rotate' directive")
+        healthy = False
+    else:
+        parts = rotate_line.split()
+        if len(parts) < 2:
+            logger(f"{log_path} rotate directive missing retention count")
+            healthy = False
+        else:
+            try:
+                retention = int(parts[1])
+            except ValueError:
+                logger(
+                    f"{log_path} rotate directive has non-numeric retention '{parts[1]}'"
+                )
+                healthy = False
+            else:
+                if retention < 3:
+                    logger(
+                        f"{log_path} rotate retention {retention} too small; increase to avoid log loss"
+                    )
+                    healthy = False
+
+    create_line = directives.get("create")
+    if create_line is None:
+        logger(f"{log_path} rotation missing 'create' directive; log files may inherit lax modes")
+        healthy = False
+    else:
+        parts = create_line.split()
+        if len(parts) < 4:
+            logger(
+                f"{log_path} create directive incomplete ({create_line}); include mode, owner, and group"
+            )
+            healthy = False
+        else:
+            mode_token = parts[1]
+            try:
+                mode_value = int(mode_token, 8)
+            except ValueError:
+                logger(f"{log_path} create mode '{mode_token}' invalid; use octal like 0640")
+                healthy = False
+            else:
+                if mode_value & stat.S_IWOTH:
+                    logger(
+                        f"{log_path} create mode {mode_token} allows world write; tighten logrotate policy"
+                    )
+                    healthy = False
+                if mode_value & stat.S_IWGRP:
+                    logger(
+                        f"{log_path} create mode {mode_token} allows group write; tighten logrotate policy"
+                    )
+                    healthy = False
+            owner = parts[2]
+            group = parts[3]
+            if owner != "root":
+                logger(
+                    f"{log_path} create directive owner {owner}; set to root to protect rotated logs"
+                )
+                healthy = False
+            if group not in {"adm", "root"}:
+                logger(
+                    f"{log_path} create directive group {group}; use adm or root for rotated logs"
+                )
+                healthy = False
+
+    if healthy:
+        logger(f"{log_path} logrotate policy validated")
+
+    return healthy
+
+
+def _debug_logrotate_config(config_path: Path, logger: Callable[[str], None]) -> bool:
+    binary = shutil.which("logrotate")
+    if not binary:
+        logger("logrotate binary not available; install logrotate to manage log retention")
+        return False
+
+    try:
+        with tempfile.NamedTemporaryFile(prefix="nn_ids_logrotate_state_", delete=True) as state_file:
+            result = subprocess.run(
+                [binary, "--debug", "--state", state_file.name, str(config_path)],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+    except subprocess.CalledProcessError as exc:
+        logger(
+            f"logrotate debug run failed for {config_path}: exit code {exc.returncode}"
+        )
+        combined = "\n".join(filter(None, [exc.stdout, exc.stderr]))
+        for line in (combined.splitlines()[:5] or ["(no debug output)"]):
+            logger(f"logrotate debug output: {line}")
+        return False
+    except FileNotFoundError:
+        logger("logrotate binary not available; install logrotate to manage log retention")
+        return False
+    except OSError as exc:
+        logger(f"Unable to execute logrotate for {config_path}: {exc}")
+        return False
+
+    issues = []
+    for stream in (result.stdout, result.stderr):
+        for line in stream.splitlines():
+            if "error" in line.lower():
+                issues.append(line.strip())
+
+    for entry in issues[:5]:
+        logger(f"logrotate debug reported error: {entry}")
+
+    return not issues
 
 
 def _parse_config_file(path: Path) -> Tuple[Dict[str, str], List[str], List[str]]:
@@ -2068,6 +2282,77 @@ def check_filesystem_security(logger: Callable[[str], None]) -> bool:
     return healthy
 
 
+def check_log_rotation(logger: Callable[[str], None]) -> bool:
+    """Validate that logrotate is deployed and enforces secure retention."""
+
+    healthy = True
+    config_path: Optional[Path] = None
+    for candidate in LOGROTATE_CANDIDATES:
+        if candidate.exists():
+            config_path = candidate
+            break
+
+    if config_path is None:
+        locations = ", ".join(str(path) for path in LOGROTATE_CANDIDATES[:-1])
+        logger(
+            "Logrotate configuration missing; expected deployment under "
+            f"{locations}"
+        )
+        return False
+
+    if config_path == LOGROTATE_SAMPLE:
+        locations = ", ".join(str(path) for path in LOGROTATE_CANDIDATES[:-1])
+        logger(
+            f"Logrotate sample found at {config_path}; deploy it to one of: {locations}"
+        )
+        return False
+
+    if not _check_secure_path(config_path, "Logrotate configuration", logger):
+        healthy = False
+
+    try:
+        contents = config_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger(f"Unable to read logrotate configuration {config_path}: {exc}")
+        return False
+
+    blocks = _parse_logrotate_config(contents)
+    if not blocks:
+        logger(
+            f"Logrotate configuration {config_path} defines no log targets; add IDS logs"
+        )
+        healthy = False
+
+    for log_path in LOGROTATE_TARGETS:
+        matched: Optional[LogrotateBlock] = None
+        for block in blocks:
+            if fnmatch.fnmatch(str(log_path), block.pattern):
+                matched = block
+                break
+        if matched is None:
+            logger(
+                f"{log_path} missing from {config_path}; log may grow without rotation"
+            )
+            healthy = False
+            continue
+        if matched.pattern != str(log_path):
+            logger(
+                f"{log_path} covered by logrotate pattern {matched.pattern}"
+            )
+        if not _validate_logrotate_block(log_path, matched.lines, logger):
+            healthy = False
+        elif not log_path.exists():
+            logger(f"{log_path} not present yet; rotation will create as needed")
+
+    if not _debug_logrotate_config(config_path, logger):
+        healthy = False
+
+    if healthy:
+        logger(f"Log rotation configuration validated via {config_path}")
+
+    return healthy
+
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -2105,6 +2390,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ("Systemd enablement", check_unit_enablement(logger)),
         ("Configuration integrity", check_configuration_integrity(logger)),
         ("Filesystem hygiene", check_filesystem_security(logger)),
+        ("Log rotation", check_log_rotation(logger)),
     ]
 
     for name, result in check_results:
