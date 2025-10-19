@@ -19,9 +19,10 @@ import stat
 import subprocess
 import textwrap
 from collections import OrderedDict
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Set
+from typing import Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple, Set
 
 ALERT_STATS = Path("/var/lib/nn_ids/alert_stats.json")
 MODEL_PATH = Path("/opt/nnids/ids_model.pkl")
@@ -77,6 +78,15 @@ COLOR_TITLE = 4
 ENABLEMENT_OK_STATES = {"enabled", "linked", "alias"}
 ENABLEMENT_ACCEPTABLE_STATES = {"static", "indirect", "generated"}
 
+
+@dataclass(frozen=True)
+class UnitStateInfo:
+    load_state: str
+    active_state: str
+    sub_state: str
+    unit_file_state: str
+    detail: Optional[str] = None
+
 CONFIG_BOOL_KEYS = {
     "NN_IDS_NOTIFY": "Notifications",
     "NN_IDS_SANITIZE": "Packet sanitization",
@@ -100,18 +110,62 @@ CONFIG_INT_FIELDS = {
 CONFIG_DISCOVERY_KEY = "NN_IDS_DISCOVERY_MODE"
 CONFIG_DISCOVERY_MODES = {"auto", "manual", "notify", "none"}
 
+DEPENDENCY_KIND_TIMER = "timer"
+DEPENDENCY_KIND_SERVICE = "service"
+
+
+class UnitDependency(NamedTuple):
+    unit: str
+    description: str
+    kind: str = DEPENDENCY_KIND_TIMER
+
+
 CONFIG_FEATURE_DEPENDENCIES = {
     "NN_IDS_SANITIZE": (
         "Packet sanitization",
-        (("nn_ids_sanitize.timer", "Dataset sanitization timer"),),
+        (
+            UnitDependency("nn_ids_sanitize.timer", "Dataset sanitization timer"),
+            UnitDependency(
+                "nn_ids_sanitize.service",
+                "Dataset sanitization service",
+                DEPENDENCY_KIND_SERVICE,
+            ),
+        ),
     ),
     "NN_IDS_AUTOBLOCK": (
         "Automatic IP blocking",
-        (("nn_ids_autoblock.timer", "Automatic blocking timer"),),
+        (
+            UnitDependency("nn_ids_autoblock.timer", "Automatic blocking timer"),
+            UnitDependency(
+                "nn_ids_autoblock.service",
+                "Automatic blocking service",
+                DEPENDENCY_KIND_SERVICE,
+            ),
+        ),
     ),
     "NN_IDS_THREAT_FEED": (
         "Threat feed updates",
-        (("threat_feed_blocklist.timer", "Threat feed update timer"),),
+        (
+            UnitDependency(
+                "threat_feed_blocklist.timer", "Threat feed update timer"
+            ),
+            UnitDependency(
+                "threat_feed_blocklist.service",
+                "Threat feed update service",
+                DEPENDENCY_KIND_SERVICE,
+            ),
+        ),
+    ),
+    "NN_IDS_NOTIFY": (
+        "Notification delivery",
+        (
+            UnitDependency("nn_ids_report.timer", "Notification report timer"),
+            UnitDependency(
+                "nn_ids_report.service",
+                "Notification report service",
+                DEPENDENCY_KIND_SERVICE,
+            ),
+        ),
     ),
 }
 
@@ -382,25 +436,83 @@ def find_script(name: str) -> Optional[str]:
     return shutil.which(name)
 
 
-def _status_from_systemctl(unit: str) -> str:
+def _query_unit_state(unit: str) -> Optional[UnitStateInfo]:
     if not shutil.which("systemctl"):
-        return "unknown"
+        return None
+    properties = ["LoadState", "ActiveState", "SubState", "UnitFileState"]
+    cmd = ["systemctl", "show", unit, "--no-page"]
+    cmd.extend(f"--property={prop}" for prop in properties)
     try:
         result = subprocess.run(
-            ["systemctl", "is-active", unit],
+            cmd,
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
-    except OSError:
+    except OSError as exc:
+        return UnitStateInfo("error", "", "", "", str(exc))
+
+    values: Dict[str, str] = {prop: "" for prop in properties}
+    for line in (result.stdout or "").splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key in values:
+            values[key] = value.strip()
+
+    load_state = values.get("LoadState", "") or ""
+    detail = (result.stderr or "").strip() or None
+
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout or "").strip()
+        lowered = message.lower()
+        if not load_state:
+            if "not-found" in lowered:
+                load_state = "not-found"
+            elif "masked" in lowered:
+                load_state = "masked"
+            elif message:
+                load_state = "error"
+                detail = message
+            else:
+                load_state = "error"
+        elif load_state == "not-found" and message:
+            detail = message
+        elif message and detail is None:
+            detail = message
+
+    if not load_state:
+        load_state = "loaded"
+
+    return UnitStateInfo(
+        load_state=load_state,
+        active_state=values.get("ActiveState", "") or "",
+        sub_state=values.get("SubState", "") or "",
+        unit_file_state=values.get("UnitFileState", "") or "",
+        detail=detail,
+    )
+
+
+def _format_unit_status(info: Optional[UnitStateInfo]) -> str:
+    if info is None:
         return "unknown"
-    output = (result.stdout or result.stderr or "").strip()
-    if result.returncode == 0 and output:
-        return output
-    if output:
-        return output
-    return "inactive"
+    load_state = info.load_state.lower()
+    if load_state and load_state not in {"loaded", ""}:
+        if info.detail and load_state == "error":
+            return f"error ({info.detail})"
+        return load_state
+    status = info.active_state or "inactive"
+    sub_state = info.sub_state
+    if status == "active" and sub_state and sub_state not in {"running", "dead"}:
+        return f"{status} ({sub_state})"
+    return status
+
+
+def _status_from_systemctl(unit: str) -> str:
+    info = _query_unit_state(unit)
+    return _format_unit_status(info)
 
 
 def _enablement_from_systemctl(unit: str) -> str:
@@ -423,15 +535,27 @@ def _enablement_from_systemctl(unit: str) -> str:
 def gather_service_lines() -> List[Tuple[str, int]]:
     lines: List[Tuple[str, int]] = []
     for unit, label in SERVICES:
-        status = _status_from_systemctl(unit)
+        info = _query_unit_state(unit)
+        status = _format_unit_status(info)
         normalized = status.lower()
-        if normalized in {"active", "running"}:
+        load_state = info.load_state.lower() if info else "unknown"
+        unit_file_state = info.unit_file_state.lower() if info else ""
+        if load_state in {"not-found", "masked", "error"} or unit_file_state == "masked":
+            color = COLOR_ERROR
+        elif normalized in {"active", "active (waiting)", "running"}:
             color = COLOR_SUCCESS
         elif normalized in {"failed", "inactive", "dead"}:
             color = COLOR_ERROR
         else:
             color = COLOR_WARN
-        lines.append((f"{label}: {status}", color))
+        detail = status
+        if load_state not in {"loaded", "", "unknown"}:
+            detail = f"{detail} (load: {load_state})"
+        elif unit_file_state == "masked":
+            detail = f"{detail} (masked)"
+        elif info and info.detail and load_state == "error":
+            detail = f"{detail} ({info.detail})"
+        lines.append((f"{label}: {detail}", color))
     if not lines:
         lines.append(("No systemd information available", COLOR_WARN))
     return lines
@@ -1515,6 +1639,58 @@ def analyze_filesystem_hygiene(entries: Sequence[Tuple[str, Path]]) -> List[str]
     return lines
 
 
+def analyze_unit_availability(units: Sequence[Tuple[str, str]]) -> List[str]:
+    if not shutil.which("systemctl"):
+        return ["systemctl unavailable; cannot inspect unit load states."]
+
+    seen: Set[str] = set()
+    issue_lines: List[str] = []
+    healthy_units: List[str] = []
+
+    for unit, label in units:
+        if unit in seen:
+            continue
+        seen.add(unit)
+        info = _query_unit_state(unit)
+        status = _format_unit_status(info)
+        load_state = info.load_state.lower() if info else "unknown"
+        unit_file_state = info.unit_file_state.lower() if info else ""
+
+        if load_state in {"not-found", "masked", "error"}:
+            detail = f" ({info.detail})" if info and info.detail and load_state == "error" else ""
+            if load_state == "not-found":
+                issue_lines.append(
+                    f"⚠ {label} ({unit}) missing; reinstall or deploy the unit file."
+                )
+            elif load_state == "masked":
+                issue_lines.append(
+                    f"⚠ {label} ({unit}) masked; run systemctl unmask {unit}."
+                )
+            else:
+                issue_lines.append(
+                    f"⚠ {label} ({unit}) load state error{detail}; investigate systemd status."
+                )
+        elif unit_file_state == "masked":
+            issue_lines.append(
+                f"⚠ {label} ({unit}) unit file masked; run systemctl unmask {unit}."
+            )
+        else:
+            descriptor = status if status not in {"inactive", "unknown"} else "loaded"
+            healthy_units.append(f"{label}: {descriptor}")
+
+    if not issue_lines:
+        if healthy_units:
+            sample = ", ".join(healthy_units[:4])
+            return [f"All monitored units are loaded ({sample})."]
+        return ["All monitored units are loaded and accessible."]
+
+    if healthy_units:
+        issue_lines.append(
+            f"Healthy units: {', '.join(healthy_units[:4])}{'...' if len(healthy_units) > 4 else ''}."
+        )
+    return issue_lines
+
+
 def format_health_log_summary() -> List[str]:
     if not HEALTH_LOG.exists():
         return ["Health check log not found."]
@@ -1690,62 +1866,135 @@ def analyze_config_integrity(
 
     systemctl_available = shutil.which("systemctl") is not None
 
-    for key, (label, timers) in CONFIG_FEATURE_DEPENDENCIES.items():
+    for key, (label, dependencies) in CONFIG_FEATURE_DEPENDENCIES.items():
         value = config.get(key)
-        if value not in {"0", "1"} or not timers:
+        if value not in {"0", "1"} or not dependencies:
             continue
         enabled_flag = value == "1"
         if not systemctl_available:
             if enabled_flag:
                 lines.append(
-                    f"⚠ {label} ({key}) enabled but unable to verify supporting timers without systemctl."
+                    f"⚠ {label} ({key}) enabled but unable to verify supporting units without systemctl."
                 )
                 issues = True
             continue
 
         mismatch = False
-        status_details: List[Tuple[str, str, str]] = []
-        for unit, description in timers:
-            status = _status_from_systemctl(unit)
-            state = _enablement_from_systemctl(unit)
-            normalized_status = status.lower()
-            normalized_state = state.lower()
-            display_status = status or "inactive"
-            display_state = state or "disabled"
-            status_details.append((description, display_status, display_state))
+        status_details: List[Tuple[str, str, str, str]] = []
+        for dependency in dependencies:
+            unit = dependency.unit
+            description = dependency.description
+            info = _query_unit_state(unit)
+            status = _format_unit_status(info)
+            load_state = info.load_state.lower() if info else ""
+            unit_file_state = info.unit_file_state.lower() if info else ""
+            enable_state = _enablement_from_systemctl(unit)
+            normalized_enable_state = enable_state.lower()
+            status_details.append(
+                (
+                    description,
+                    status or "inactive",
+                    enable_state or "unknown",
+                    load_state or "loaded",
+                )
+            )
 
-            if enabled_flag:
-                if normalized_status not in {"active", "waiting"}:
+            if info is not None and load_state not in {"loaded", ""}:
+                mismatch = True
+                issues = True
+                if load_state == "not-found":
                     lines.append(
-                        f"⚠ {label} enabled but {description} ({unit}) is {display_status}."
+                        f"⚠ {label} dependency {description} ({unit}) missing; reinstall the unit."
                     )
-                    issues = True
-                    mismatch = True
-                if normalized_state not in ENABLEMENT_OK_STATES and normalized_state not in ENABLEMENT_ACCEPTABLE_STATES:
+                elif load_state == "masked":
                     lines.append(
-                        f"⚠ {label} enabled but {description} ({unit}) not enabled (state: {display_state})."
+                        f"⚠ {label} dependency {description} ({unit}) is masked; run systemctl unmask {unit}."
                     )
-                    issues = True
-                    mismatch = True
+                else:
+                    detail = f" ({info.detail})" if info.detail else ""
+                    lines.append(
+                        f"⚠ {label} dependency {description} ({unit}) load state {load_state or 'unknown'}{detail}."
+                    )
+                if unit_file_state == "masked":
+                    lines.append(
+                        f"⚠ {label} dependency {description} ({unit}) unit file masked; run systemctl unmask {unit}."
+                    )
+                continue
+
+            if unit_file_state == "masked":
+                mismatch = True
+                issues = True
+                lines.append(
+                    f"⚠ {label} dependency {description} ({unit}) unit file is masked; unmask it."
+                )
+                continue
+
+            normalized_status = (
+                info.active_state.lower() if info and info.active_state else ""
+            )
+
+            if dependency.kind == DEPENDENCY_KIND_TIMER:
+                if enabled_flag:
+                    if normalized_status not in {"active", "activating"}:
+                        mismatch = True
+                        issues = True
+                        lines.append(
+                            f"⚠ {label} enabled but {description} ({unit}) is {status or 'inactive'}."
+                        )
+                    if (
+                        normalized_enable_state not in ENABLEMENT_OK_STATES
+                        and normalized_enable_state not in ENABLEMENT_ACCEPTABLE_STATES
+                    ):
+                        mismatch = True
+                        issues = True
+                        lines.append(
+                            f"⚠ {label} enabled but {description} ({unit}) enablement is {enable_state or 'unknown'}."
+                        )
+                else:
+                    if normalized_status in {"active", "activating"}:
+                        mismatch = True
+                        issues = True
+                        lines.append(
+                            f"⚠ {label} disabled but {description} ({unit}) still {status or 'active'}; disable the timer or update {key}."
+                        )
+                    if normalized_enable_state in ENABLEMENT_OK_STATES:
+                        mismatch = True
+                        issues = True
+                        lines.append(
+                            f"⚠ {label} disabled but {description} ({unit}) remains enabled ({enable_state or 'enabled'})."
+                        )
             else:
-                if normalized_status in {"active", "waiting", "running"}:
-                    lines.append(
-                        f"⚠ {label} disabled but {description} ({unit}) still {display_status}; disable the timer or update {key}."
-                    )
-                    issues = True
+                if enabled_flag and normalized_status == "failed":
                     mismatch = True
-                if normalized_state in ENABLEMENT_OK_STATES:
-                    lines.append(
-                        f"⚠ {label} disabled but {description} ({unit}) remains enabled ({display_state})."
-                    )
                     issues = True
+                    lines.append(
+                        f"⚠ {label} enabled but {description} ({unit}) is failed; inspect logs."
+                    )
+                if not enabled_flag and normalized_status in {"active", "activating", "running"}:
                     mismatch = True
+                    issues = True
+                    lines.append(
+                        f"⚠ {label} disabled but {description} ({unit}) running; stop the service or update {key}."
+                    )
+                if normalized_enable_state.startswith("error"):
+                    mismatch = True
+                    issues = True
+                    lines.append(
+                        f"⚠ Unable to determine enablement for {description} ({unit}): {enable_state}."
+                    )
 
         if not mismatch:
             state_word = "enabled" if enabled_flag else "disabled"
-            summary = ", ".join(
-                f"{desc} {status} ({state})" for desc, status, state in status_details
-            )
+            summary_parts = []
+            for desc, status_text, enable_state, load_state in status_details:
+                annotations: List[str] = []
+                if load_state and load_state not in {"loaded", ""}:
+                    annotations.append(f"load={load_state}")
+                if enable_state and enable_state not in {"", "unknown"}:
+                    annotations.append(f"enablement={enable_state}")
+                annotation_text = f" ({', '.join(annotations)})" if annotations else ""
+                summary_parts.append(f"{desc} {status_text}{annotation_text}")
+            summary = ", ".join(summary_parts)
             lines.append(f"{label}: {state_word}; {summary}.")
 
     if not issues:
@@ -1759,6 +2008,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
     config_path, config, config_duplicates, config_malformed = detect_config_with_diagnostics()
     services = gather_service_lines()
     enablement = gather_enablement_lines()
+    unit_availability = analyze_unit_availability(SERVICES)
     summary = format_summary(stats)
     model = format_model_health(stats)
     adversarial = format_adversarial(stats)
@@ -1886,6 +2136,7 @@ def build_views() -> List[Tuple[str, List[Tuple[str, Sequence]]]]:
                 ("Hourly Coverage", hourly_coverage),
                 ("Model Alignment", model_alignment),
                 ("Recent Alert Alignment", recent_alignment),
+                ("Unit Availability", unit_availability),
                 ("Unit Enablement", enablement),
                 ("File Freshness", freshness),
                 ("Configuration Integrity", config_integrity),

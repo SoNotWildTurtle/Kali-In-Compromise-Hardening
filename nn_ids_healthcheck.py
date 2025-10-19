@@ -15,7 +15,8 @@ import stat
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 MODEL = Path("/opt/nnids/ids_model.pkl")
 ALERT_STATS = Path("/var/lib/nn_ids/alert_stats.json")
@@ -70,18 +71,62 @@ CONFIG_INT_FIELDS: Dict[str, Tuple[str, int, int]] = {
 CONFIG_DISCOVERY_KEY = "NN_IDS_DISCOVERY_MODE"
 CONFIG_DISCOVERY_MODES = {"auto", "manual", "notify", "none"}
 
-CONFIG_FEATURE_DEPENDENCIES: Dict[str, Tuple[str, Sequence[Tuple[str, str]]]] = {
+DEPENDENCY_KIND_TIMER = "timer"
+DEPENDENCY_KIND_SERVICE = "service"
+
+
+class UnitDependency(NamedTuple):
+    unit: str
+    description: str
+    kind: str = DEPENDENCY_KIND_TIMER
+
+
+CONFIG_FEATURE_DEPENDENCIES: Dict[str, Tuple[str, Sequence[UnitDependency]]] = {
     "NN_IDS_SANITIZE": (
         "Packet sanitization",
-        (("nn_ids_sanitize.timer", "Dataset sanitization timer"),),
+        (
+            UnitDependency("nn_ids_sanitize.timer", "Dataset sanitization timer"),
+            UnitDependency(
+                "nn_ids_sanitize.service",
+                "Dataset sanitization service",
+                DEPENDENCY_KIND_SERVICE,
+            ),
+        ),
     ),
     "NN_IDS_AUTOBLOCK": (
         "Automatic IP blocking",
-        (("nn_ids_autoblock.timer", "Automatic blocking timer"),),
+        (
+            UnitDependency("nn_ids_autoblock.timer", "Automatic blocking timer"),
+            UnitDependency(
+                "nn_ids_autoblock.service",
+                "Automatic blocking service",
+                DEPENDENCY_KIND_SERVICE,
+            ),
+        ),
     ),
     "NN_IDS_THREAT_FEED": (
         "Threat feed updates",
-        (("threat_feed_blocklist.timer", "Threat feed update timer"),),
+        (
+            UnitDependency(
+                "threat_feed_blocklist.timer", "Threat feed update timer"
+            ),
+            UnitDependency(
+                "threat_feed_blocklist.service",
+                "Threat feed update service",
+                DEPENDENCY_KIND_SERVICE,
+            ),
+        ),
+    ),
+    "NN_IDS_NOTIFY": (
+        "Notification delivery",
+        (
+            UnitDependency("nn_ids_report.timer", "Notification report timer"),
+            UnitDependency(
+                "nn_ids_report.service",
+                "Notification report service",
+                DEPENDENCY_KIND_SERVICE,
+            ),
+        ),
     ),
 }
 
@@ -99,6 +144,15 @@ PROTECTED_PATHS: Sequence[Tuple[Path, str]] = (
 
 SYSTEMCTL_AVAILABLE = shutil.which("systemctl") is not None
 _SYSTEMCTL_WARNING_EMITTED = False
+
+
+@dataclass(frozen=True)
+class UnitStateInfo:
+    load_state: str
+    active_state: str
+    sub_state: str
+    unit_file_state: str
+    detail: Optional[str] = None
 
 
 def create_logger(verbose: bool) -> Callable[[str], None]:
@@ -277,6 +331,89 @@ def unit_enabled(unit: str) -> Tuple[bool, str]:
     return False, output
 
 
+def query_unit_state(unit: str) -> Optional[UnitStateInfo]:
+    """Return systemd state details for ``unit`` when available."""
+
+    if not SYSTEMCTL_AVAILABLE:
+        return None
+
+    properties = ["LoadState", "ActiveState", "SubState", "UnitFileState"]
+    cmd = ["systemctl", "show", unit, "--no-page"]
+    cmd.extend(f"--property={prop}" for prop in properties)
+
+    try:
+        result = subprocess.run(
+            cmd,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as exc:
+        detail = str(exc)
+        return UnitStateInfo("error", "", "", "", detail)
+
+    values: Dict[str, str] = {prop: "" for prop in properties}
+    for line in (result.stdout or "").splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key in values:
+            values[key] = value.strip()
+
+    load_state = values.get("LoadState", "") or ""
+    detail = (result.stderr or "").strip() or None
+
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout or "").strip()
+        lowered = message.lower()
+        if not load_state:
+            if "not-found" in lowered:
+                load_state = "not-found"
+            elif "masked" in lowered:
+                load_state = "masked"
+            elif message:
+                load_state = "error"
+                detail = message
+            else:
+                load_state = "error"
+        elif load_state == "not-found" and message:
+            detail = message
+        elif message and detail is None:
+            detail = message
+
+    if not load_state:
+        load_state = "loaded"
+
+    return UnitStateInfo(
+        load_state=load_state,
+        active_state=values.get("ActiveState", "") or "",
+        sub_state=values.get("SubState", "") or "",
+        unit_file_state=values.get("UnitFileState", "") or "",
+        detail=detail,
+    )
+
+
+def format_unit_status(info: Optional[UnitStateInfo]) -> str:
+    """Return a readable status string for a systemd unit."""
+
+    if info is None:
+        return "unknown"
+
+    load_state = info.load_state.lower()
+    if load_state and load_state not in {"loaded", ""}:
+        if info.detail and load_state == "error":
+            return f"error ({info.detail})"
+        return load_state
+
+    status = info.active_state or "inactive"
+    sub_state = info.sub_state
+    if status == "active" and sub_state and sub_state not in {"running", "dead"}:
+        return f"{status} ({sub_state})"
+    return status
+
+
 def check_services(
     logger: Callable[[str], None], restart: bool = True
 ) -> bool:
@@ -287,6 +424,36 @@ def check_services(
 
     healthy = True
     for unit, description in CRITICAL_SERVICES:
+        state = query_unit_state(unit)
+        if state is not None:
+            load_state = state.load_state.lower()
+            if load_state != "loaded":
+                healthy = False
+                if load_state == "not-found":
+                    logger(
+                        f"{description} ({unit}) missing from systemd; reinstall or deploy the unit file"
+                    )
+                elif load_state == "masked":
+                    logger(
+                        f"{description} ({unit}) is masked; unmask the unit so the service can start"
+                    )
+                else:
+                    detail = f" ({state.detail})" if state.detail else ""
+                    logger(
+                        f"{description} ({unit}) load state {load_state or 'unknown'}{detail};"
+                        " investigate systemd configuration"
+                    )
+                if state.unit_file_state.lower() == "masked":
+                    logger(
+                        f"{description} ({unit}) unit file state masked; run 'systemctl unmask {unit}'"
+                    )
+                continue
+            if state.unit_file_state.lower() == "masked":
+                healthy = False
+                logger(
+                    f"{description} ({unit}) unit file is masked; unmask to allow startups"
+                )
+                continue
         if service_active(unit):
             logger(f"{description} ({unit}) active")
             continue
@@ -311,6 +478,36 @@ def check_timers(logger: Callable[[str], None]) -> bool:
 
     healthy = True
     for unit, description in CRITICAL_TIMERS:
+        state = query_unit_state(unit)
+        if state is not None:
+            load_state = state.load_state.lower()
+            if load_state != "loaded":
+                healthy = False
+                if load_state == "not-found":
+                    logger(
+                        f"{description} ({unit}) missing from systemd; reinstall or restore the timer unit"
+                    )
+                elif load_state == "masked":
+                    logger(
+                        f"{description} ({unit}) is masked; unmask it so scheduled jobs resume"
+                    )
+                else:
+                    detail = f" ({state.detail})" if state.detail else ""
+                    logger(
+                        f"{description} ({unit}) load state {load_state or 'unknown'}{detail};"
+                        " investigate timer configuration"
+                    )
+                if state.unit_file_state.lower() == "masked":
+                    logger(
+                        f"{description} ({unit}) unit file state masked; run 'systemctl unmask {unit}'"
+                    )
+                continue
+            if state.unit_file_state.lower() == "masked":
+                healthy = False
+                logger(
+                    f"{description} ({unit}) unit file is masked; unmask to allow scheduling"
+                )
+                continue
         if service_active(unit):
             logger(f"{description} ({unit}) active")
         else:
@@ -1704,56 +1901,131 @@ def check_configuration_integrity(logger: Callable[[str], None]) -> bool:
         healthy = False
 
     if SYSTEMCTL_AVAILABLE:
-        for key, (feature_label, timers) in CONFIG_FEATURE_DEPENDENCIES.items():
-            if key not in bool_values or not timers:
+        for key, (feature_label, dependencies) in CONFIG_FEATURE_DEPENDENCIES.items():
+            if key not in bool_values or not dependencies:
                 continue
             enabled_flag = bool_values[key]
             dependency_issue = False
-            for unit, description in timers:
-                is_active = service_active(unit)
+            status_details: List[Tuple[str, str, str, str]] = []
+            for dependency in dependencies:
+                unit = dependency.unit
+                description = dependency.description
+                info = query_unit_state(unit)
+                load_state = (info.load_state.lower() if info else "")
+                unit_file_state = (info.unit_file_state.lower() if info else "")
+                status_text = format_unit_status(info)
                 enabled_state, state = unit_enabled(unit)
                 state_lower = state.lower()
-                if enabled_flag:
-                    if not is_active:
+                status_details.append(
+                    (
+                        description,
+                        status_text,
+                        state_lower or "unknown",
+                        load_state or "loaded",
+                    )
+                )
+
+                if info is not None and load_state != "loaded":
+                    dependency_issue = True
+                    healthy = False
+                    if load_state == "not-found":
                         logger(
-                            f"{feature_label} ({key}) enabled but {description} ({unit}) inactive;",
-                            " enable or start the timer to honor configuration",
+                            f"{feature_label} ({key}) dependency {description} ({unit}) missing; reinstall the unit"
                         )
-                        healthy = False
-                        dependency_issue = True
-                    if not (enabled_state or state_lower in UNIT_ALLOWED_ENABLE_STATES):
+                    elif load_state == "masked":
                         logger(
-                            f"{feature_label} ({key}) enabled but {description} ({unit}) not enabled",
-                            f" for startup (state: {state_lower or 'disabled'}); enable it or mask intentionally",
+                            f"{feature_label} ({key}) dependency {description} ({unit}) is masked; unmask it"
                         )
-                        healthy = False
-                        dependency_issue = True
-                else:
-                    if is_active:
+                    else:
+                        detail = f" ({info.detail})" if info.detail else ""
                         logger(
-                            f"{feature_label} ({key}) disabled but {description} ({unit}) still active;",
-                            f" disable the timer or set {key}=1 if automatic runs are desired",
+                            f"{feature_label} ({key}) dependency {description} ({unit}) load state {load_state or 'unknown'}{detail}"
                         )
-                        healthy = False
-                        dependency_issue = True
-                    if enabled_state or state_lower in UNIT_AUTO_START_STATES:
+                    if unit_file_state == "masked":
                         logger(
-                            f"{feature_label} ({key}) disabled but {description} ({unit}) remains enabled",
-                            f" (state: {state_lower or 'enabled'}); disable it to prevent unintended automation",
+                            f"{feature_label} ({key}) dependency {description} ({unit}) unit file masked; run 'systemctl unmask {unit}'"
                         )
-                        healthy = False
+                    continue
+
+                if unit_file_state == "masked":
+                    dependency_issue = True
+                    healthy = False
+                    logger(
+                        f"{feature_label} ({key}) dependency {description} ({unit}) unit file is masked; unmask it"
+                    )
+                    continue
+
+                normalized_status = (info.active_state.lower() if info and info.active_state else "")
+
+                if dependency.kind == DEPENDENCY_KIND_TIMER:
+                    if enabled_flag:
+                        if normalized_status not in {"active", "activating"}:
+                            dependency_issue = True
+                            healthy = False
+                            logger(
+                                f"{feature_label} ({key}) enabled but {description} ({unit}) {status_text}; start or enable the timer"
+                            )
+                        if not (
+                            enabled_state or state_lower in UNIT_ALLOWED_ENABLE_STATES
+                        ):
+                            dependency_issue = True
+                            healthy = False
+                            logger(
+                                f"{feature_label} ({key}) enabled but {description} ({unit}) not enabled for startup"
+                                f" (state: {state_lower or 'disabled'}); enable it or mask intentionally"
+                            )
+                    else:
+                        if normalized_status in {"active", "activating"}:
+                            dependency_issue = True
+                            healthy = False
+                            logger(
+                                f"{feature_label} ({key}) disabled but {description} ({unit}) still {status_text}; disable the timer or update {key}"
+                            )
+                        if enabled_state or state_lower in UNIT_AUTO_START_STATES:
+                            dependency_issue = True
+                            healthy = False
+                            logger(
+                                f"{feature_label} ({key}) disabled but {description} ({unit}) remains enabled"
+                                f" (state: {state_lower or 'enabled'}); disable it to prevent unintended automation"
+                            )
+                else:  # service dependency
+                    if enabled_flag and normalized_status == "failed":
                         dependency_issue = True
+                        healthy = False
+                        logger(
+                            f"{feature_label} ({key}) enabled but {description} ({unit}) failed; inspect logs"
+                        )
+                    if not enabled_flag and normalized_status in {"active", "activating", "running"}:
+                        dependency_issue = True
+                        healthy = False
+                        logger(
+                            f"{feature_label} ({key}) disabled but {description} ({unit}) running; stop the service or update {key}"
+                        )
+                    if state_lower.startswith("error"):
+                        dependency_issue = True
+                        healthy = False
+                        logger(
+                            f"Unable to determine enablement for {description} ({unit}): {state_lower}"
+                        )
 
             if not dependency_issue:
                 state_text = "enabled" if enabled_flag else "disabled"
-                logger(
-                    f"{feature_label} ({key}) {state_text}; dependency timers aligned",
-                )
+                summary_parts = []
+                for desc, status_text, enable_state, load_state in status_details:
+                    annotations: List[str] = []
+                    if load_state and load_state not in {"loaded", ""}:
+                        annotations.append(f"load={load_state}")
+                    if enable_state:
+                        annotations.append(f"enablement={enable_state}")
+                    annotation_text = f" ({', '.join(annotations)})" if annotations else ""
+                    summary_parts.append(f"{desc} {status_text}{annotation_text}")
+                summary = ", ".join(summary_parts)
+                logger(f"{feature_label} ({key}) {state_text}; {summary}")
     else:
-        for key, (feature_label, timers) in CONFIG_FEATURE_DEPENDENCIES.items():
-            if key in bool_values and bool_values[key] and timers:
+        for key, (feature_label, dependencies) in CONFIG_FEATURE_DEPENDENCIES.items():
+            if key in bool_values and bool_values[key] and dependencies:
                 logger(
-                    f"{feature_label} ({key}) enabled but unable to verify supporting timers",
+                    f"{feature_label} ({key}) enabled but unable to verify supporting units",
                     " because systemctl is unavailable",
                 )
 
