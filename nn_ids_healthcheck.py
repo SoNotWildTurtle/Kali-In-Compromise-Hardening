@@ -410,6 +410,85 @@ def _validate_logrotate_block(
     return healthy
 
 
+def _validate_log_file_metadata(
+    log_path: Path, logger: Callable[[str], None]
+) -> bool:
+    """Ensure a log file exists with restrictive ownership and permissions."""
+
+    try:
+        stat_result = log_path.lstat()
+    except FileNotFoundError:
+        logger(f"{log_path} not present yet; logrotate will create it after first use")
+        return True
+    except OSError as exc:
+        logger(f"Unable to stat log file {log_path}: {exc}")
+        return False
+
+    mode = stat_result.st_mode
+    if stat.S_ISLNK(mode):
+        logger(
+            f"{log_path} is a symbolic link; enforce rotation on the canonical log file"
+        )
+        return False
+    if not stat.S_ISREG(mode):
+        logger(f"{log_path} is not a regular file; investigate the log destination")
+        return False
+
+    permissions = stat.S_IMODE(mode)
+    owner_text = _format_owner(stat_result.st_uid, stat_result.st_gid)
+    issues: List[str] = []
+
+    if permissions & stat.S_IWOTH:
+        issues.append("world-writable")
+    if permissions & stat.S_IWGRP:
+        issues.append("group-writable")
+
+    try:
+        owner = pwd.getpwuid(stat_result.st_uid).pw_name
+    except KeyError:
+        owner = str(stat_result.st_uid)
+    try:
+        group = grp.getgrgid(stat_result.st_gid).gr_name
+    except KeyError:
+        group = str(stat_result.st_gid)
+
+    if owner != "root":
+        issues.append(f"owner {owner}")
+    if group not in {"adm", "root"}:
+        issues.append(f"group {group}")
+
+    parent = log_path.parent
+    try:
+        parent_stat = parent.lstat()
+    except OSError as exc:
+        logger(f"Unable to stat parent directory {parent} for {log_path}: {exc}")
+        return False
+
+    try:
+        parent_group = grp.getgrgid(parent_stat.st_gid).gr_name
+    except KeyError:
+        parent_group = str(parent_stat.st_gid)
+
+    parent_mode = stat.S_IMODE(parent_stat.st_mode)
+    if stat.S_ISLNK(parent_stat.st_mode):
+        issues.append(f"parent {parent} is a symbolic link")
+    if parent_mode & stat.S_IWOTH:
+        issues.append(f"parent {parent} world-writable")
+    if parent_mode & stat.S_IWGRP and parent_group not in {"adm", "root"}:
+        issues.append(
+            f"parent {parent} group-writable (group {parent_group})"
+        )
+
+    if issues:
+        logger(
+            f"{log_path} permissions require hardening ({'; '.join(issues)}); adjust log security"
+        )
+        return False
+
+    logger(f"{log_path} log file secure ({owner_text} {_format_mode(mode)})")
+    return True
+
+
 def _debug_logrotate_config(config_path: Path, logger: Callable[[str], None]) -> bool:
     binary = shutil.which("logrotate")
     if not binary:
@@ -2341,8 +2420,8 @@ def check_log_rotation(logger: Callable[[str], None]) -> bool:
             )
         if not _validate_logrotate_block(log_path, matched.lines, logger):
             healthy = False
-        elif not log_path.exists():
-            logger(f"{log_path} not present yet; rotation will create as needed")
+        elif not _validate_log_file_metadata(log_path, logger):
+            healthy = False
 
     if not _debug_logrotate_config(config_path, logger):
         healthy = False

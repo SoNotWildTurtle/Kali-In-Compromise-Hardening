@@ -1847,15 +1847,80 @@ def analyze_logrotate_config() -> List[str]:
         status_parts.append("daily")
         if mode_token and owner and group:
             status_parts.append(f"create {mode_token} {owner}:{group}")
-        if not log_path.exists():
+
+        metadata_warnings: List[str] = []
+        try:
+            stat_result = log_path.lstat()
+        except FileNotFoundError:
             status_parts.append("log not created yet")
-        else:
+            stat_result = None
+        except OSError as exc:
+            lines.append(
+                f"⚠ {log_path.name}: unable to stat log file {log_path}: {exc}."
+            )
+            stat_result = None
+
+        if stat_result is not None:
+            mode_value = stat_result.st_mode
+            owner_name = None
+            group_name = None
             try:
-                stat_result = log_path.stat()
+                owner_name = pwd.getpwuid(stat_result.st_uid).pw_name
+            except KeyError:
+                owner_name = str(stat_result.st_uid)
+            try:
+                group_name = grp.getgrgid(stat_result.st_gid).gr_name
+            except KeyError:
+                group_name = str(stat_result.st_gid)
+
+            status_parts.append(
+                f"mode {_format_mode(mode_value)} {owner_name}:{group_name}"
+            )
+
+            if stat.S_ISLNK(mode_value):
+                metadata_warnings.append("is a symbolic link")
+            elif not stat.S_ISREG(mode_value):
+                metadata_warnings.append("not a regular file")
+            else:
                 size_kib = stat_result.st_size / 1024
                 status_parts.append(f"current size {size_kib:.1f} KiB")
-            except OSError:
-                status_parts.append("unable to stat log file")
+
+            permissions = stat.S_IMODE(mode_value)
+            if permissions & stat.S_IWOTH:
+                metadata_warnings.append("world-writable")
+            if permissions & stat.S_IWGRP:
+                metadata_warnings.append("group-writable")
+            if owner_name != "root":
+                metadata_warnings.append(f"owner {owner_name}")
+            if group_name not in {"adm", "root"}:
+                metadata_warnings.append(f"group {group_name}")
+
+            parent = log_path.parent
+            try:
+                parent_stat = parent.lstat()
+            except OSError as exc:
+                metadata_warnings.append(f"unable to stat parent {parent}: {exc}")
+            else:
+                try:
+                    parent_group = grp.getgrgid(parent_stat.st_gid).gr_name
+                except KeyError:
+                    parent_group = str(parent_stat.st_gid)
+
+                if stat.S_ISLNK(parent_stat.st_mode):
+                    metadata_warnings.append(f"parent {parent} is a symlink")
+                parent_mode = stat.S_IMODE(parent_stat.st_mode)
+                if parent_mode & stat.S_IWOTH:
+                    metadata_warnings.append(f"parent {parent} world-writable")
+                if parent_mode & stat.S_IWGRP and parent_group not in {"adm", "root"}:
+                    metadata_warnings.append(
+                        f"parent {parent} group-writable (group {parent_group})"
+                    )
+
+        if metadata_warnings:
+            lines.append(
+                f"⚠ {log_path.name}: {'; '.join(metadata_warnings)}; harden log file permissions."
+            )
+
         if pattern_note:
             status_parts.append(f"pattern {matched_pattern}")
         lines.append(f"{log_path.name}: {', '.join(status_parts)}.")
