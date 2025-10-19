@@ -160,6 +160,20 @@ LOGROTATE_TARGETS: Sequence[Path] = (
     Path("/var/log/nn_ids_train.log"),
 )
 
+LOGROTATE_STATE_CANDIDATES: Sequence[Path] = (
+    Path("/var/lib/logrotate/status"),
+    Path("/var/lib/logrotate/status-uuid"),
+)
+
+LOGROTATE_STATE_TIME_FORMATS: Sequence[str] = (
+    "%Y-%m-%d-%H:%M:%S",
+    "%Y-%m-%d-%H:%M",
+    "%Y-%m-%d",
+)
+
+LOGROTATE_ROTATION_STALE = timedelta(days=2)
+LOGROTATE_STATE_CLOCK_SKEW = timedelta(minutes=5)
+
 LOGROTATE_REQUIRED_DIRECTIVES = {
     "daily",
     "missingok",
@@ -179,6 +193,12 @@ class UnitStateInfo:
     sub_state: str
     unit_file_state: str
     detail: Optional[str] = None
+
+
+class LogFileSnapshot(NamedTuple):
+    exists: bool
+    size: Optional[int]
+    regular: bool
 
 
 class LogrotateBlock(NamedTuple):
@@ -546,6 +566,178 @@ def _validate_log_file_metadata(
 
     logger(f"{log_path} log file secure ({owner_text} {_format_mode(mode)})")
     return True
+
+
+def _snapshot_log_file(log_path: Path) -> LogFileSnapshot:
+    try:
+        stat_result = log_path.stat()
+    except FileNotFoundError:
+        return LogFileSnapshot(False, None, False)
+    except OSError:
+        return LogFileSnapshot(False, None, False)
+
+    is_regular = stat.S_ISREG(stat_result.st_mode)
+    size = stat_result.st_size if is_regular else stat_result.st_size
+    return LogFileSnapshot(True, size, is_regular)
+
+
+def _strip_quotes(token: str) -> str:
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in {'"', "'"}:
+        return token[1:-1]
+    return token
+
+
+def _detect_logrotate_state_path(text: str) -> Optional[Path]:
+    brace_depth = 0
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        if brace_depth == 0 and stripped.lower().startswith("state"):
+            parts = stripped.split(None, 1)
+            if len(parts) == 2:
+                candidate = _strip_quotes(parts[1].split("#", 1)[0].strip())
+                if candidate:
+                    return Path(candidate)
+
+        brace_depth += stripped.count("{")
+        brace_depth -= stripped.count("}")
+        if brace_depth < 0:
+            brace_depth = 0
+
+    return None
+
+
+def _parse_logrotate_state(text: str, logger: Callable[[str], None]) -> Dict[str, datetime]:
+    entries: Dict[str, datetime] = {}
+    for lineno, raw_line in enumerate(text.splitlines(), 1):
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("logrotate state --") or stripped.startswith("#"):
+            continue
+
+        if not stripped.startswith('"'):
+            logger(f"Unrecognized logrotate state entry on line {lineno}: {stripped!r}")
+            continue
+
+        try:
+            _, remainder = stripped.split('"', 1)
+            path_token, rest = remainder.split('"', 1)
+        except ValueError:
+            logger(f"Malformed logrotate state entry on line {lineno}: {stripped!r}")
+            continue
+
+        timestamp_text = rest.strip()
+        if not timestamp_text:
+            logger(f"Logrotate state entry missing timestamp for {path_token!r}")
+            continue
+
+        parsed_time: Optional[datetime] = None
+        for fmt in LOGROTATE_STATE_TIME_FORMATS:
+            try:
+                parsed_time = datetime.strptime(timestamp_text, fmt)
+            except ValueError:
+                continue
+            else:
+                parsed_time = parsed_time.replace(tzinfo=timezone.utc)
+                break
+
+        if parsed_time is None:
+            try:
+                epoch = int(timestamp_text)
+            except ValueError:
+                logger(
+                    f"Logrotate state entry for {path_token!r} has unrecognized timestamp {timestamp_text!r}"
+                )
+                continue
+            parsed_time = datetime.fromtimestamp(epoch, timezone.utc)
+
+        entries[path_token] = parsed_time
+
+    return entries
+
+
+def _evaluate_logrotate_state(
+    config_path: Path,
+    state_candidates: Sequence[Path],
+    tracked_logs: Dict[Path, LogFileSnapshot],
+    logger: Callable[[str], None],
+) -> bool:
+    if not tracked_logs:
+        return True
+
+    checked: List[Path] = []
+    state_path: Optional[Path] = None
+    for candidate in state_candidates:
+        if candidate in checked:
+            continue
+        checked.append(candidate)
+        if candidate.exists():
+            state_path = candidate
+            break
+
+    if state_path is None:
+        locations = ", ".join(str(path) for path in checked if path)
+        logger(
+            "Logrotate state file missing; expected logrotate to manage rotations via "
+            f"{locations or 'configured state directive'}"
+        )
+        return False
+
+    try:
+        contents = state_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger(f"Unable to read logrotate state file {state_path}: {exc}")
+        return False
+
+    entries = _parse_logrotate_state(contents, logger)
+    healthy = True
+    now = datetime.now(timezone.utc)
+
+    for log_path, snapshot in tracked_logs.items():
+        entry = entries.get(str(log_path)) or entries.get(log_path.as_posix())
+        exists = snapshot.exists
+        size = snapshot.size or 0
+
+        if entry is None:
+            if exists and size > 0:
+                healthy = False
+                logger(
+                    f"{log_path} missing from logrotate state {state_path}; run 'logrotate {config_path}'"
+                    " to register rotations"
+                )
+            else:
+                logger(
+                    f"{log_path} has not been rotated yet; execute logrotate once to initialize state"
+                )
+            continue
+
+        if entry > now + LOGROTATE_STATE_CLOCK_SKEW:
+            skew = entry - now
+            healthy = False
+            logger(
+                f"{log_path} rotation timestamp {entry.isoformat()} is {_format_duration(skew)} ahead"
+                " of system clock; verify system time"
+            )
+            continue
+
+        age = now - entry
+        if age > LOGROTATE_ROTATION_STALE and (not exists or size == 0):
+            logger(
+                f"{log_path} last rotated {_format_duration(age)} ago but log is empty;"
+                " confirm logrotate schedule"
+            )
+        elif age > LOGROTATE_ROTATION_STALE:
+            healthy = False
+            logger(
+                f"{log_path} last rotated {_format_duration(age)} ago; ensure logrotate timer is running"
+            )
+        else:
+            logger(
+                f"{log_path} rotation recorded {_format_duration(age)} ago via {state_path}"
+            )
+
+    return healthy
 
 
 def _debug_logrotate_config(config_path: Path, logger: Callable[[str], None]) -> bool:
@@ -2454,6 +2646,7 @@ def check_log_rotation(logger: Callable[[str], None]) -> bool:
         logger(f"Unable to read logrotate configuration {config_path}: {exc}")
         return False
 
+    state_directive = _detect_logrotate_state_path(contents)
     blocks = _parse_logrotate_config(contents)
     if not blocks:
         logger(
@@ -2461,6 +2654,7 @@ def check_log_rotation(logger: Callable[[str], None]) -> bool:
         )
         healthy = False
 
+    tracked_logs: Dict[Path, LogFileSnapshot] = {}
     for log_path in LOGROTATE_TARGETS:
         matched: Optional[LogrotateBlock] = None
         for block in blocks:
@@ -2481,6 +2675,16 @@ def check_log_rotation(logger: Callable[[str], None]) -> bool:
             healthy = False
         elif not _validate_log_file_metadata(log_path, logger):
             healthy = False
+
+        tracked_logs[log_path] = _snapshot_log_file(log_path)
+
+    state_candidates: List[Path] = []
+    if state_directive is not None:
+        state_candidates.append(state_directive)
+    state_candidates.extend(LOGROTATE_STATE_CANDIDATES)
+
+    if not _evaluate_logrotate_state(config_path, state_candidates, tracked_logs, logger):
+        healthy = False
 
     if not _debug_logrotate_config(config_path, logger):
         healthy = False

@@ -62,6 +62,17 @@ LOGROTATE_TARGETS: List[Path] = [
     Path("/var/log/nn_ids_report.log"),
     Path("/var/log/nn_ids_train.log"),
 ]
+LOGROTATE_STATE_CANDIDATES: List[Path] = [
+    Path("/var/lib/logrotate/status"),
+    Path("/var/lib/logrotate/status-uuid"),
+]
+LOGROTATE_STATE_TIME_FORMATS: Sequence[str] = (
+    "%Y-%m-%d-%H:%M:%S",
+    "%Y-%m-%d-%H:%M",
+    "%Y-%m-%d",
+)
+LOGROTATE_ROTATION_STALE = timedelta(days=2)
+LOGROTATE_STATE_CLOCK_SKEW = timedelta(minutes=5)
 SECURE_LOG_GROUPS = {"adm", "root"}
 LOGROTATE_REQUIRED_DIRECTIVES = {
     "daily",
@@ -291,6 +302,101 @@ def _parse_logrotate_blocks(text: str) -> List[Tuple[str, List[str]]]:
     return blocks
 
 
+def _strip_quotes(token: str) -> str:
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in {'"', "'"}:
+        return token[1:-1]
+    return token
+
+
+def _detect_logrotate_state_path(text: str) -> Optional[Path]:
+    brace_depth = 0
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        if brace_depth == 0 and stripped.lower().startswith("state"):
+            parts = stripped.split(None, 1)
+            if len(parts) == 2:
+                candidate = _strip_quotes(parts[1].split("#", 1)[0].strip())
+                if candidate:
+                    return Path(candidate)
+
+        brace_depth += stripped.count("{")
+        brace_depth -= stripped.count("}")
+        if brace_depth < 0:
+            brace_depth = 0
+
+    return None
+
+
+def _logrotate_state_candidates(config_text: Optional[str]) -> List[Path]:
+    candidates: List[Path] = []
+    if config_text:
+        directive = _detect_logrotate_state_path(config_text)
+        if directive and directive not in candidates:
+            candidates.append(directive)
+    for path in LOGROTATE_STATE_CANDIDATES:
+        if path not in candidates:
+            candidates.append(path)
+    return candidates
+
+
+def _parse_logrotate_state(text: str) -> Tuple[Dict[str, datetime], List[str]]:
+    entries: Dict[str, datetime] = {}
+    warnings: List[str] = []
+    for lineno, raw_line in enumerate(text.splitlines(), 1):
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("logrotate state --") or stripped.startswith("#"):
+            continue
+
+        if not stripped.startswith('"'):
+            warnings.append(
+                f"⚠ State line {lineno} unrecognized: {stripped}"
+            )
+            continue
+
+        try:
+            _, remainder = stripped.split('"', 1)
+            path_token, rest = remainder.split('"', 1)
+        except ValueError:
+            warnings.append(
+                f"⚠ State line {lineno} malformed: {stripped}"
+            )
+            continue
+
+        timestamp_text = rest.strip()
+        if not timestamp_text:
+            warnings.append(
+                f"⚠ State entry for {path_token} missing timestamp"
+            )
+            continue
+
+        parsed_time: Optional[datetime] = None
+        for fmt in LOGROTATE_STATE_TIME_FORMATS:
+            try:
+                parsed_time = datetime.strptime(timestamp_text, fmt)
+            except ValueError:
+                continue
+            else:
+                parsed_time = parsed_time.replace(tzinfo=timezone.utc)
+                break
+
+        if parsed_time is None:
+            try:
+                epoch = int(timestamp_text)
+            except ValueError:
+                warnings.append(
+                    f"⚠ State entry for {path_token} has unknown timestamp {timestamp_text}"
+                )
+                continue
+            parsed_time = datetime.fromtimestamp(epoch, timezone.utc)
+
+        entries[path_token] = parsed_time
+
+    return entries, warnings
+
+
 def _enumerate_insecure_log_ancestors(log_path: Path) -> Tuple[List[str], Optional[str]]:
     issues: List[str] = []
 
@@ -408,6 +514,14 @@ def resolve_logrotate_path() -> Optional[Path]:
         if candidate.exists():
             return candidate
     return None
+
+
+def resolve_logrotate_state_path(config_text: Optional[str] = None) -> Tuple[Optional[Path], List[Path]]:
+    candidates = _logrotate_state_candidates(config_text)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate, candidates
+    return None, candidates
 
 
 def update_config_value(key: str, value: str) -> str:
@@ -1759,6 +1873,72 @@ def analyze_filesystem_hygiene(entries: Sequence[Tuple[str, Path]]) -> List[str]
     return lines
 
 
+def _summarize_logrotate_state(
+    config_path: Path,
+    config_text: str,
+    snapshots: Dict[Path, Tuple[bool, Optional[int]]],
+) -> List[str]:
+    if not snapshots:
+        return []
+
+    state_path, candidates = resolve_logrotate_state_path(config_text)
+    if state_path is None:
+        candidate_text = ", ".join(str(path) for path in candidates) if candidates else "(none)"
+        return [
+            "⚠ Logrotate state file missing; expected rotation tracking at "
+            f"{candidate_text}.",
+        ]
+
+    lines: List[str] = [f"State file: {state_path}"]
+    try:
+        state_text = state_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"⚠ Unable to read logrotate state file {state_path}: {exc}"]
+
+    entries, warnings = _parse_logrotate_state(state_text)
+    lines.extend(warnings)
+
+    now = datetime.now(timezone.utc)
+
+    for log_path, (exists, size) in snapshots.items():
+        entry = entries.get(str(log_path)) or entries.get(log_path.as_posix())
+        display = log_path.name
+        size_value = size or 0
+        non_empty = bool(exists and size_value > 0)
+
+        if entry is None:
+            if non_empty:
+                lines.append(
+                    f"⚠ {display}: not tracked in {state_path}; run 'logrotate {config_path}' to register rotations."
+                )
+            else:
+                lines.append(
+                    f"⚠ {display}: rotation not yet recorded; execute logrotate once after the log populates."
+                )
+            continue
+
+        if entry > now + LOGROTATE_STATE_CLOCK_SKEW:
+            skew = entry - now
+            lines.append(
+                f"⚠ {display}: rotation timestamp {entry.isoformat()} is {_format_duration(skew)} ahead of system clock."
+            )
+            continue
+
+        age = now - entry
+        if age > LOGROTATE_ROTATION_STALE and non_empty:
+            lines.append(
+                f"⚠ {display}: last rotation {_format_duration(age)} ago; ensure logrotate executes daily."
+            )
+        elif age > LOGROTATE_ROTATION_STALE:
+            lines.append(
+                f"⚠ {display}: rotation {_format_duration(age)} ago but log empty — confirm schedule."
+            )
+        else:
+            lines.append(f"{display}: last rotation {_format_duration(age)} ago.")
+
+    return lines
+
+
 def analyze_logrotate_config() -> List[str]:
     """Inspect logrotate configuration for IDS log coverage and hygiene."""
 
@@ -1805,6 +1985,7 @@ def analyze_logrotate_config() -> List[str]:
             f"⚠ {config_path} defines no log rotation blocks; add IDS log files to avoid growth.",
         ]
 
+    snapshots: Dict[Path, Tuple[bool, Optional[int]]] = {}
     for log_path in LOGROTATE_TARGETS:
         matched_pattern: Optional[str] = None
         block_lines: List[str] = []
@@ -1980,8 +2161,15 @@ def analyze_logrotate_config() -> List[str]:
             status_parts.append(f"pattern {matched_pattern}")
         lines.append(f"{log_path.name}: {', '.join(status_parts)}.")
 
+        if stat_result is None:
+            snapshots[log_path] = (False, None)
+        else:
+            snapshots[log_path] = (True, stat_result.st_size)
+
     if len(lines) == 1:
         lines.append("All monitored logs are protected by logrotate.")
+
+    lines.extend(_summarize_logrotate_state(config_path, text, snapshots))
 
     return lines
 
@@ -2594,6 +2782,22 @@ def open_logrotate_config(stdscr: "curses._CursesWindow") -> str:
     return message
 
 
+def open_logrotate_state(stdscr: "curses._CursesWindow") -> str:
+    config_path = resolve_logrotate_path()
+    config_text: Optional[str] = None
+    if config_path and config_path.exists():
+        try:
+            config_text = config_path.read_text(encoding="utf-8")
+        except OSError:
+            config_text = None
+
+    state_path, candidates = resolve_logrotate_state_path(config_text)
+    if state_path is None:
+        expected = ", ".join(str(path) for path in candidates) if candidates else "(no default state path)"
+        return f"Logrotate state file not found; expected under {expected}"
+    return open_log(stdscr, state_path)
+
+
 def show_actions_palette(
     stdscr: "curses._CursesWindow", actions: "OrderedDict[str, Tuple[str, Callable[[], str]]]"
 ) -> Optional[str]:
@@ -2673,6 +2877,7 @@ def main(stdscr: "curses._CursesWindow") -> None:
             ("j", ("View health check log", lambda: open_log(stdscr, HEALTH_LOG))),
             ("0", ("View raw alert telemetry", lambda: open_log(stdscr, ALERT_STATS))),
             ("5", ("View logrotate policy", lambda: open_logrotate_config(stdscr))),
+            ("6", ("View logrotate state", lambda: open_logrotate_state(stdscr))),
             ("l", ("View incident analytics log", lambda: open_log(stdscr, DEFAULT_LOGS["incident"]))),
             ("c", ("Open nn_ids.conf", lambda: open_config(stdscr))),
             ("n", ("Toggle notifications", lambda: toggle_config_bool("NN_IDS_NOTIFY"))),
