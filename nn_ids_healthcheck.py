@@ -424,6 +424,17 @@ def _validate_logrotate_block(
                         f"{log_path} create mode {mode_token} allows group write; tighten logrotate policy"
                     )
                     healthy = False
+                if mode_value & (stat.S_IROTH | stat.S_IXOTH):
+                    world_access: List[str] = []
+                    if mode_value & stat.S_IROTH:
+                        world_access.append("read")
+                    if mode_value & stat.S_IXOTH:
+                        world_access.append("execute")
+                    descriptor = "/".join(world_access) if world_access else "access"
+                    logger(
+                        f"{log_path} create mode {mode_token} grants world {descriptor}; tighten logrotate policy"
+                    )
+                    healthy = False
             owner = parts[2]
             group = parts[3]
             if owner != "root":
@@ -464,6 +475,10 @@ def _validate_logrotate_block(
                 )
                 healthy = False
 
+    olddir_line = directives.get("olddir")
+    if olddir_line and not _validate_logrotate_olddir(log_path, olddir_line, logger):
+        healthy = False
+
     if healthy:
         logger(f"{log_path} logrotate policy validated")
 
@@ -471,6 +486,98 @@ def _validate_logrotate_block(
 
 
 SECURE_LOG_GROUPS = {"adm", "root"}
+
+
+def _validate_logrotate_olddir(
+    log_path: Path, directive: str, logger: Callable[[str], None]
+) -> bool:
+    """Ensure olddir targets keep rotated logs in a secure location."""
+
+    tokenized = directive.split("#", 1)[0].split()
+    if len(tokenized) < 2:
+        logger(
+            f"{log_path} olddir directive incomplete ({directive}); specify an absolute directory"
+        )
+        return False
+
+    raw_token = _strip_quotes(tokenized[1])
+    if not raw_token:
+        logger(f"{log_path} olddir directive missing directory ({directive})")
+        return False
+
+    olddir_path = Path(raw_token)
+    if not olddir_path.is_absolute():
+        logger(
+            f"{log_path} olddir {olddir_path} is not absolute; rotate logs into a fixed directory"
+        )
+        return False
+
+    try:
+        stat_result = olddir_path.lstat()
+    except FileNotFoundError:
+        logger(
+            f"{log_path} olddir {olddir_path} missing; create the directory with restrictive permissions"
+        )
+        return False
+    except OSError as exc:
+        logger(f"Unable to stat {log_path} olddir {olddir_path}: {exc}")
+        return False
+
+    mode = stat_result.st_mode
+    if stat.S_ISLNK(mode):
+        logger(
+            f"{log_path} olddir {olddir_path} is a symbolic link; rotate into a canonical directory"
+        )
+        return False
+    if not stat.S_ISDIR(mode):
+        logger(
+            f"{log_path} olddir {olddir_path} is not a directory; adjust the logrotate policy"
+        )
+        return False
+
+    permissions = stat.S_IMODE(mode)
+    try:
+        owner = pwd.getpwuid(stat_result.st_uid).pw_name
+    except KeyError:
+        owner = str(stat_result.st_uid)
+    try:
+        group = grp.getgrgid(stat_result.st_gid).gr_name
+    except KeyError:
+        group = str(stat_result.st_gid)
+
+    issues: List[str] = []
+    if permissions & stat.S_IWOTH:
+        issues.append("world-writable")
+    if permissions & (stat.S_IROTH | stat.S_IXOTH):
+        issues.append("world-accessible")
+    if permissions & stat.S_IWGRP and group not in SECURE_LOG_GROUPS:
+        issues.append(f"group-writable (group {group})")
+    if owner != "root":
+        issues.append(f"owner {owner}")
+    if group not in SECURE_LOG_GROUPS:
+        issues.append(f"group {group}")
+
+    ancestor_issues, ancestor_error = _enumerate_insecure_ancestors(
+        olddir_path / log_path.name
+    )
+    if ancestor_error:
+        logger(ancestor_error)
+        return False
+    if ancestor_issues:
+        issues.extend(ancestor_issues)
+
+    if issues:
+        joined = "; ".join(issues)
+        logger(
+            f"{log_path} olddir {olddir_path} insecure ({joined}); harden rotated log directory"
+        )
+        return False
+
+    owner_text = _format_owner(stat_result.st_uid, stat_result.st_gid)
+    logger(
+        f"{log_path} olddir {olddir_path} secure ({owner_text} {_format_mode(mode)})"
+    )
+    return True
 
 
 def _enumerate_insecure_ancestors(log_path: Path) -> Tuple[List[str], Optional[str]]:
@@ -547,6 +654,8 @@ def _validate_log_file_metadata(
         issues.append("world-writable")
     if permissions & stat.S_IWGRP:
         issues.append("group-writable")
+    if permissions & (stat.S_IROTH | stat.S_IXOTH):
+        issues.append("world-accessible")
 
     try:
         owner = pwd.getpwuid(stat_result.st_uid).pw_name

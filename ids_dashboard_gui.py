@@ -544,6 +544,77 @@ def _enumerate_insecure_log_ancestors(log_path: Path) -> Tuple[List[str], Option
     return issues, None
 
 
+def _analyze_logrotate_olddir(
+    log_path: Path, directive: str
+) -> Tuple[List[str], Optional[str]]:
+    """Validate an olddir directive and summarize its security posture."""
+
+    raw = directive.split("#", 1)[0].strip()
+    tokens = raw.split()
+    if len(tokens) < 2:
+        return (["olddir directive incomplete"], None)
+
+    candidate_token = _strip_quotes(tokens[1])
+    if not candidate_token:
+        return (["olddir directive missing directory"], None)
+
+    olddir_path = Path(candidate_token)
+    if not olddir_path.is_absolute():
+        return ([f"olddir {olddir_path} not absolute"], None)
+
+    try:
+        stat_result = olddir_path.lstat()
+    except FileNotFoundError:
+        return ([f"olddir {olddir_path} missing"], None)
+    except OSError as exc:
+        return ([f"olddir {olddir_path} unreadable ({exc})"], None)
+
+    mode = stat_result.st_mode
+    if stat.S_ISLNK(mode):
+        return ([f"olddir {olddir_path} is a symlink"], None)
+    if not stat.S_ISDIR(mode):
+        return ([f"olddir {olddir_path} not a directory"], None)
+
+    issues: List[str] = []
+    permissions = stat.S_IMODE(mode)
+    try:
+        owner = pwd.getpwuid(stat_result.st_uid).pw_name
+    except KeyError:
+        owner = str(stat_result.st_uid)
+    try:
+        group = grp.getgrgid(stat_result.st_gid).gr_name
+    except KeyError:
+        group = str(stat_result.st_gid)
+
+    if permissions & stat.S_IWOTH:
+        issues.append("olddir world-writable")
+    if permissions & (stat.S_IROTH | stat.S_IXOTH):
+        issues.append("olddir world-accessible")
+    if permissions & stat.S_IWGRP and group not in SECURE_LOG_GROUPS:
+        issues.append(f"olddir group-writable (group {group})")
+    if owner != "root":
+        issues.append(f"olddir owner {owner}")
+    if group not in SECURE_LOG_GROUPS:
+        issues.append(f"olddir group {group}")
+
+    ancestor_issues, ancestor_error = _enumerate_insecure_log_ancestors(
+        olddir_path / log_path.name
+    )
+    if ancestor_error:
+        return ([f"olddir {olddir_path} ancestor audit failed ({ancestor_error})"], None)
+    if ancestor_issues:
+        issues.extend(ancestor_issues)
+
+    if issues:
+        return ([f"olddir {olddir_path} {'; '.join(issues)}"], None)
+
+    owner_text = _describe_owner(stat_result.st_uid, stat_result.st_gid)
+    return (
+        [],
+        f"olddir {olddir_path} ({owner_text} {_format_mode(mode)})",
+    )
+
+
 def load_json(path: Path) -> Dict:
     """Load a JSON file into a dict, returning an empty dict on failure."""
     try:
@@ -2284,6 +2355,8 @@ def analyze_logrotate_config() -> List[str]:
                         issues.append(f"mode {mode_token} world-writable")
                     if mode_value & stat.S_IWGRP:
                         issues.append(f"mode {mode_token} group-writable")
+                    if mode_value & (stat.S_IROTH | stat.S_IXOTH):
+                        issues.append(f"mode {mode_token} world-accessible")
                 except ValueError:
                     issues.append(f"mode '{mode_token}' invalid")
                 if owner != "root":
@@ -2310,6 +2383,13 @@ def analyze_logrotate_config() -> List[str]:
         else:
             issues.append("su directive absent")
 
+        olddir_line = directives.get("olddir")
+        olddir_status: Optional[str] = None
+        if olddir_line:
+            olddir_issues, olddir_status = _analyze_logrotate_olddir(log_path, olddir_line)
+            if olddir_issues:
+                issues.extend(olddir_issues)
+
         pattern_note = "" if matched_pattern == str(log_path) else f" via {matched_pattern}"
         if issues:
             lines.append(f"⚠ {log_path.name}: {'; '.join(issues)}{pattern_note}.")
@@ -2323,6 +2403,8 @@ def analyze_logrotate_config() -> List[str]:
             status_parts.append(f"create {mode_token} {owner}:{group}")
         if su_user and su_group:
             status_parts.append(f"su {su_user}:{su_group}")
+        if olddir_status:
+            status_parts.append(olddir_status)
 
         metadata_warnings: List[str] = []
         try:
@@ -2366,6 +2448,8 @@ def analyze_logrotate_config() -> List[str]:
                 metadata_warnings.append("world-writable")
             if permissions & stat.S_IWGRP:
                 metadata_warnings.append("group-writable")
+            if permissions & (stat.S_IROTH | stat.S_IXOTH):
+                metadata_warnings.append("world-accessible")
             if owner_name != "root":
                 metadata_warnings.append(f"owner {owner_name}")
             if group_name not in SECURE_LOG_GROUPS:
