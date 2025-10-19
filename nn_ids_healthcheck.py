@@ -70,6 +70,24 @@ CONFIG_INT_FIELDS: Dict[str, Tuple[str, int, int]] = {
 CONFIG_DISCOVERY_KEY = "NN_IDS_DISCOVERY_MODE"
 CONFIG_DISCOVERY_MODES = {"auto", "manual", "notify", "none"}
 
+CONFIG_FEATURE_DEPENDENCIES: Dict[str, Tuple[str, Sequence[Tuple[str, str]]]] = {
+    "NN_IDS_SANITIZE": (
+        "Packet sanitization",
+        (("nn_ids_sanitize.timer", "Dataset sanitization timer"),),
+    ),
+    "NN_IDS_AUTOBLOCK": (
+        "Automatic IP blocking",
+        (("nn_ids_autoblock.timer", "Automatic blocking timer"),),
+    ),
+    "NN_IDS_THREAT_FEED": (
+        "Threat feed updates",
+        (("threat_feed_blocklist.timer", "Threat feed update timer"),),
+    ),
+}
+
+UNIT_AUTO_START_STATES = {"enabled", "linked", "alias"}
+UNIT_ALLOWED_ENABLE_STATES = UNIT_AUTO_START_STATES | {"static", "indirect", "generated"}
+
 PROTECTED_PATHS: Sequence[Tuple[Path, str]] = (
     (ALERT_STATS.parent, "Alert telemetry directory"),
     (ALERT_STATS, "Alert telemetry"),
@@ -309,8 +327,6 @@ def check_unit_enablement(logger: Callable[[str], None]) -> bool:
 
     healthy = True
     checked: set[str] = set()
-    acceptable_states = {"enabled", "linked", "alias", "static", "indirect", "generated"}
-
     for unit_group in (CRITICAL_SERVICES, CRITICAL_TIMERS):
         for unit, description in unit_group:
             if unit in checked:
@@ -318,7 +334,7 @@ def check_unit_enablement(logger: Callable[[str], None]) -> bool:
             checked.add(unit)
             enabled, state = unit_enabled(unit)
             state_lower = state.lower()
-            if enabled or state_lower in acceptable_states:
+            if enabled or state_lower in UNIT_ALLOWED_ENABLE_STATES:
                 logger(
                     f"{description} ({unit}) enablement: {state_lower or 'enabled'}"
                 )
@@ -1686,6 +1702,60 @@ def check_configuration_integrity(logger: Callable[[str], None]) -> bool:
             " adjust to avoid suppressing process alerts"
         )
         healthy = False
+
+    if SYSTEMCTL_AVAILABLE:
+        for key, (feature_label, timers) in CONFIG_FEATURE_DEPENDENCIES.items():
+            if key not in bool_values or not timers:
+                continue
+            enabled_flag = bool_values[key]
+            dependency_issue = False
+            for unit, description in timers:
+                is_active = service_active(unit)
+                enabled_state, state = unit_enabled(unit)
+                state_lower = state.lower()
+                if enabled_flag:
+                    if not is_active:
+                        logger(
+                            f"{feature_label} ({key}) enabled but {description} ({unit}) inactive;",
+                            " enable or start the timer to honor configuration",
+                        )
+                        healthy = False
+                        dependency_issue = True
+                    if not (enabled_state or state_lower in UNIT_ALLOWED_ENABLE_STATES):
+                        logger(
+                            f"{feature_label} ({key}) enabled but {description} ({unit}) not enabled",
+                            f" for startup (state: {state_lower or 'disabled'}); enable it or mask intentionally",
+                        )
+                        healthy = False
+                        dependency_issue = True
+                else:
+                    if is_active:
+                        logger(
+                            f"{feature_label} ({key}) disabled but {description} ({unit}) still active;",
+                            f" disable the timer or set {key}=1 if automatic runs are desired",
+                        )
+                        healthy = False
+                        dependency_issue = True
+                    if enabled_state or state_lower in UNIT_AUTO_START_STATES:
+                        logger(
+                            f"{feature_label} ({key}) disabled but {description} ({unit}) remains enabled",
+                            f" (state: {state_lower or 'enabled'}); disable it to prevent unintended automation",
+                        )
+                        healthy = False
+                        dependency_issue = True
+
+            if not dependency_issue:
+                state_text = "enabled" if enabled_flag else "disabled"
+                logger(
+                    f"{feature_label} ({key}) {state_text}; dependency timers aligned",
+                )
+    else:
+        for key, (feature_label, timers) in CONFIG_FEATURE_DEPENDENCIES.items():
+            if key in bool_values and bool_values[key] and timers:
+                logger(
+                    f"{feature_label} ({key}) enabled but unable to verify supporting timers",
+                    " because systemctl is unavailable",
+                )
 
     if healthy:
         logger(f"Configuration integrity verified using {config_path}")

@@ -100,6 +100,21 @@ CONFIG_INT_FIELDS = {
 CONFIG_DISCOVERY_KEY = "NN_IDS_DISCOVERY_MODE"
 CONFIG_DISCOVERY_MODES = {"auto", "manual", "notify", "none"}
 
+CONFIG_FEATURE_DEPENDENCIES = {
+    "NN_IDS_SANITIZE": (
+        "Packet sanitization",
+        (("nn_ids_sanitize.timer", "Dataset sanitization timer"),),
+    ),
+    "NN_IDS_AUTOBLOCK": (
+        "Automatic IP blocking",
+        (("nn_ids_autoblock.timer", "Automatic blocking timer"),),
+    ),
+    "NN_IDS_THREAT_FEED": (
+        "Threat feed updates",
+        (("threat_feed_blocklist.timer", "Threat feed update timer"),),
+    ),
+}
+
 
 def _format_duration(delta: timedelta) -> str:
     seconds = int(max(delta.total_seconds(), 0))
@@ -1672,6 +1687,66 @@ def analyze_config_integrity(
             "⚠ GA_PROC_MIN_RISK below GA_PROC_THRESHOLD; process alerts may be skipped."
         )
         issues = True
+
+    systemctl_available = shutil.which("systemctl") is not None
+
+    for key, (label, timers) in CONFIG_FEATURE_DEPENDENCIES.items():
+        value = config.get(key)
+        if value not in {"0", "1"} or not timers:
+            continue
+        enabled_flag = value == "1"
+        if not systemctl_available:
+            if enabled_flag:
+                lines.append(
+                    f"⚠ {label} ({key}) enabled but unable to verify supporting timers without systemctl."
+                )
+                issues = True
+            continue
+
+        mismatch = False
+        status_details: List[Tuple[str, str, str]] = []
+        for unit, description in timers:
+            status = _status_from_systemctl(unit)
+            state = _enablement_from_systemctl(unit)
+            normalized_status = status.lower()
+            normalized_state = state.lower()
+            display_status = status or "inactive"
+            display_state = state or "disabled"
+            status_details.append((description, display_status, display_state))
+
+            if enabled_flag:
+                if normalized_status not in {"active", "waiting"}:
+                    lines.append(
+                        f"⚠ {label} enabled but {description} ({unit}) is {display_status}."
+                    )
+                    issues = True
+                    mismatch = True
+                if normalized_state not in ENABLEMENT_OK_STATES and normalized_state not in ENABLEMENT_ACCEPTABLE_STATES:
+                    lines.append(
+                        f"⚠ {label} enabled but {description} ({unit}) not enabled (state: {display_state})."
+                    )
+                    issues = True
+                    mismatch = True
+            else:
+                if normalized_status in {"active", "waiting", "running"}:
+                    lines.append(
+                        f"⚠ {label} disabled but {description} ({unit}) still {display_status}; disable the timer or update {key}."
+                    )
+                    issues = True
+                    mismatch = True
+                if normalized_state in ENABLEMENT_OK_STATES:
+                    lines.append(
+                        f"⚠ {label} disabled but {description} ({unit}) remains enabled ({display_state})."
+                    )
+                    issues = True
+                    mismatch = True
+
+        if not mismatch:
+            state_word = "enabled" if enabled_flag else "disabled"
+            summary = ", ".join(
+                f"{desc} {status} ({state})" for desc, status, state in status_details
+            )
+            lines.append(f"{label}: {state_word}; {summary}.")
 
     if not issues:
         lines.append("Configuration settings validated successfully.")
