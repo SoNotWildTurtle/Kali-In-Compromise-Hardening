@@ -1,0 +1,16 @@
+[Unit]
+Description=Audit Kali NN IDS model drift, imbalance, robustness, and explainability
+After=network.target
+ConditionPathExists=/opt/nnids/ids_model.pkl
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nn_ids_model_audit.py
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/nnids/audit /var/log
