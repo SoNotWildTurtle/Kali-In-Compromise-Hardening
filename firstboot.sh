@@ -132,6 +132,12 @@ fi
 if systemctl list-unit-files | grep -q '^nn_ids_restore.timer'; then
     systemctl start nn_ids_restore.timer
 fi
+if systemctl list-unit-files | grep -q '^nn_ids_model_audit.timer'; then
+    systemctl enable --now nn_ids_model_audit.timer || true
+fi
+if [ -x /usr/local/bin/nn_ids_model_audit.py ]; then
+    /usr/local/bin/nn_ids_model_audit.py >/var/log/nn_ids_model_audit.firstboot.log 2>&1 || true
+fi
 if systemctl list-unit-files | grep -q '^internet_access_monitor.timer'; then
     systemctl start internet_access_monitor.timer
 fi
@@ -220,18 +226,5 @@ if [ -x /usr/local/bin/network_discovery.sh ]; then
     /usr/local/bin/network_discovery.sh
 fi
 
-# Launch IDS configuration menu for user interaction
-if [ -x /usr/local/bin/ids_menu.sh ]; then
-    if command -v x-terminal-emulator >/dev/null 2>&1; then
-        x-terminal-emulator -e /usr/local/bin/ids_menu.sh &
-    else
-        /usr/local/bin/ids_menu.sh
-    fi
-fi
-
-# Final Cleanup and Disable First Boot Service
+# Disable this first boot service so it runs only once
 systemctl disable firstboot.service
-rm /etc/systemd/system/firstboot.service
-rm /usr/local/bin/firstboot.sh
-
-echo "First boot hardening completed successfully."
