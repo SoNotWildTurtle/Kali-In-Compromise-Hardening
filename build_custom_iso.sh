@@ -135,6 +135,9 @@ ids_modules=(
     "nn_ids_sanitize.py"
     "nn_ids_sanitize.service"
     "nn_ids_sanitize.timer"
+    "nn_ids_model_audit.py"
+    "nn_ids_model_audit.service"
+    "nn_ids_model_audit.timer"
     "process_service_monitor.py"
     "process_monitor.service"
     "process_monitor.timer"
@@ -209,6 +212,7 @@ WantedBy=multi-user.target
 SERVICE
 
 chmod +x "$INSTALL_DIR"/*.sh 2>/dev/null || true
+chmod +x "$INSTALL_DIR"/*.py 2>/dev/null || true
 
 mkisofs -D -r -V "Kali Custom" -cache-inodes -J -l \
     -b isolinux/isolinux.bin \
