@@ -1,0 +1,15 @@
+[Unit]
+Description=Defensive host<->VM communication guard
+Documentation=man:nft(8)
+After=network-pre.target
+Wants=network-pre.target
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/host_vm_comm_guard.sh apply
+ExecStop=/usr/local/bin/host_vm_comm_guard.sh remove
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
