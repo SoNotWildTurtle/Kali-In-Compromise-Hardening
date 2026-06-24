@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Kali NN IDS model audit daily
+
+[Timer]
+OnBootSec=45min
+OnUnitActiveSec=1d
+Persistent=true
+Unit=nn_ids_model_audit.service
+
+[Install]
+WantedBy=timers.target
