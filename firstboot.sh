@@ -20,6 +20,15 @@ chattr +i /etc/passwd /etc/shadow /etc/group /etc/gshadow /root/critical_backup/
 if [ -x /usr/local/bin/network_io_monitor.sh ]; then
     /usr/local/bin/network_io_monitor.sh
 fi
+
+# Apply explicit host<->VM communication policy early, before remote host hardening.
+if [ -x /usr/local/bin/host_vm_comm_guard.sh ]; then
+    /usr/local/bin/host_vm_comm_guard.sh apply || true
+fi
+if systemctl list-unit-files | grep -q '^host_vm_comm_guard.service'; then
+    systemctl enable --now host_vm_comm_guard.service || true
+fi
+
 if [ -x /usr/local/bin/secure_dev_env.sh ]; then
     /usr/local/bin/secure_dev_env.sh
 fi
@@ -142,7 +151,6 @@ until ping -c1 "$HOST_IP" >/dev/null 2>&1; do
     fi
 done
 
-
 if ping -c1 "$HOST_IP" >/dev/null 2>&1 && \
    [ -x /usr/local/bin/host_hardening_windows.sh ]; then
     /usr/local/bin/host_hardening_windows.sh
@@ -153,7 +161,6 @@ if ping -c1 "$HOST_IP" >/dev/null 2>&1 && \
     /usr/local/bin/host_hardening_linux.sh
 fi
 
-# Apply additional VM hardening tailored for a Windows host environment
 # Apply additional VM hardening tailored for a Windows host environment
 if [ -x /usr/local/bin/vm_windows_env_hardening.sh ]; then
     /usr/local/bin/vm_windows_env_hardening.sh
@@ -194,6 +201,12 @@ if systemctl list-unit-files | grep -q '^nn_ids_resource_monitor.timer'; then
 fi
 if systemctl list-unit-files | grep -q '^nn_ids_sanitize.timer'; then
     systemctl start nn_ids_sanitize.timer
+fi
+if [ -x /usr/local/bin/host_vm_comm_guard.sh ]; then
+    /usr/local/bin/host_vm_comm_guard.sh status || true
+fi
+if [ -x /usr/local/bin/anti_wipe_monitor.sh ]; then
+    /usr/local/bin/anti_wipe_monitor.sh || true
 fi
 if systemctl list-unit-files | grep -q '^anti_wipe_monitor.service'; then
     systemctl start anti_wipe_monitor.service
