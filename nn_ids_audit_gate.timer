@@ -1,0 +1,12 @@
+[Unit]
+Description=Run NN IDS audit gate after recurring model audits
+
+[Timer]
+OnBootSec=20min
+OnUnitActiveSec=1h
+RandomizedDelaySec=5min
+Persistent=true
+Unit=nn_ids_audit_gate.service
+
+[Install]
+WantedBy=timers.target
