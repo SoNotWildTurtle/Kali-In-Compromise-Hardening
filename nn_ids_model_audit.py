@@ -12,7 +12,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import joblib
 import numpy as np
@@ -73,6 +73,14 @@ def _numeric_xy(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
     return x, y
 
 
+def _metric_average(y: pd.Series) -> str:
+    """Use binary scoring for 0/1 IDS labels, otherwise weighted multiclass scoring."""
+    values = set(y.dropna().unique().tolist())
+    if values.issubset({0, 1, 0.0, 1.0, "0", "1"}) and len(values) <= 2:
+        return "binary"
+    return "weighted"
+
+
 def _class_distribution(y: pd.Series) -> Dict[str, int]:
     return {str(k): int(v) for k, v in y.value_counts(dropna=False).sort_index().items()}
 
@@ -121,7 +129,7 @@ def _drift_report(current: Dict[str, Dict[str, float]]) -> Dict[str, Any]:
     return {"baseline_created": False, "max_mean_z": round(max_mean_z, 4), "shifted_features": shifted[:25]}
 
 
-def _robustness_index(model: Any, x: pd.DataFrame, y: pd.Series) -> Dict[str, Any]:
+def _robustness_index(model: Any, x: pd.DataFrame, y: pd.Series, average: str) -> Dict[str, Any]:
     rng = np.random.default_rng(RANDOM_STATE)
     scores: List[Dict[str, float]] = []
     x_float = x.astype(float)
@@ -136,24 +144,25 @@ def _robustness_index(model: Any, x: pd.DataFrame, y: pd.Series) -> Dict[str, An
         scores.append({
             "noise_level": float(level),
             "accuracy": float(accuracy_score(y, preds)),
-            "f1": float(f1_score(y, preds, zero_division=0)),
+            "f1": float(f1_score(y, preds, average=average, zero_division=0)),
         })
     accuracies = [item["accuracy"] for item in scores]
     ri = float(np.trapz(accuracies, PERTURBATION_LEVELS) / max(PERTURBATION_LEVELS))
     return {"robustness_index": round(ri, 6), "perturbation_scores": scores}
 
 
-def _importance_report(model: Any, x: pd.DataFrame, y: pd.Series) -> Dict[str, Any]:
+def _importance_report(model: Any, x: pd.DataFrame, y: pd.Series, average: str) -> Dict[str, Any]:
     sample_size = min(len(x), 2000)
     x_sample = x.sample(sample_size, random_state=RANDOM_STATE) if len(x) > sample_size else x
     y_sample = y.loc[x_sample.index]
+    scoring = "f1" if average == "binary" else "f1_weighted"
     result = permutation_importance(
         model,
         x_sample,
         y_sample,
         n_repeats=5,
         random_state=RANDOM_STATE,
-        scoring="f1",
+        scoring=scoring,
     )
     importance = {
         col: float(mean)
@@ -184,6 +193,7 @@ def audit_model() -> Dict[str, Any]:
     model = joblib.load(MODEL_PATH)
     df = _load_dataset()
     x, y = _numeric_xy(df)
+    average = _metric_average(y)
     stratify = y if y.nunique() > 1 and y.value_counts().min() >= 2 else None
     x_train, x_test, y_train, y_test = train_test_split(
         x,
@@ -206,18 +216,19 @@ def audit_model() -> Dict[str, Any]:
         rows=int(len(df)),
         features=list(x.columns),
         class_distribution=_class_distribution(y),
+        metric_average=average,
         metrics={
             "accuracy": float(accuracy_score(y_test, preds)),
             "balanced_accuracy": float(balanced_accuracy_score(y_test, preds)),
-            "precision": float(precision_score(y_test, preds, zero_division=0)),
-            "recall": float(recall_score(y_test, preds, zero_division=0)),
-            "f1": float(f1_score(y_test, preds, zero_division=0)),
+            "precision": float(precision_score(y_test, preds, average=average, zero_division=0)),
+            "recall": float(recall_score(y_test, preds, average=average, zero_division=0)),
+            "f1": float(f1_score(y_test, preds, average=average, zero_division=0)),
             "confusion_matrix": cm,
         },
         probability_available=proba is not None,
         drift=_drift_report(stats),
-        robustness=_robustness_index(model, x_test, y_test),
-        explainability=_importance_report(model, x_test, y_test),
+        robustness=_robustness_index(model, x_test, y_test, average),
+        explainability=_importance_report(model, x_test, y_test, average),
     )
     _write_json(REPORT_PATH, report)
     return report
