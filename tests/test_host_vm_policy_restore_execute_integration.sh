@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # MINC - Integration-style fixture tests for the manual host/VM restore executor.
-# Defensive test only: exercises review-gated dry-run and refusal paths without mutating /etc.
+# Defensive test only: exercises review-gated dry-run, execute logic, and refusal paths without mutating /etc.
 
 set -euo pipefail
 
@@ -78,6 +78,82 @@ assert len(result['actions']) == 2, result
 assert all(action['status'] == 'preflight_ok' for action in result['actions']), result
 assert 'decision=restore_ready_dry_run' in report, report
 assert 'changes_live_state=False' in report, report
+PY
+
+# Safe execute-mode harness: exercise the executor's approved restore branch while
+# monkeypatching copy/reload functions into a temporary shadow root. This proves the
+# execute path and backup metadata without writing to live /etc or invoking systemctl/nft.
+python3 - "$SCRIPT" "$TMPDIR/plan.json" "$TMPDIR/approval.json" "$TMPDIR/shadow_root" "$TMPDIR/backups" <<'PY'
+import hashlib
+import importlib.util
+import json
+import pathlib
+import shutil
+import sys
+from types import SimpleNamespace
+
+script, plan_path, approval_path, shadow_root, backup_dir = sys.argv[1:]
+spec = importlib.util.spec_from_file_location('restore_execute_under_test', script)
+module = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(module)
+
+shadow = pathlib.Path(shadow_root)
+shadow.mkdir(parents=True, exist_ok=True)
+copied_targets = []
+
+def sha256_file(path: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as handle:
+        digest.update(handle.read())
+    return digest.hexdigest()
+
+def shadow_copy_with_backup(source, target, requested_backup_dir):
+    assert str(target).startswith('/etc/'), target
+    assert pathlib.Path(str(requested_backup_dir)) == pathlib.Path(backup_dir)
+    shadow_target = shadow / str(target).lstrip('/')
+    shadow_target.parent.mkdir(parents=True, exist_ok=True)
+    if shadow_target.exists():
+        pathlib.Path(backup_dir).mkdir(parents=True, exist_ok=True)
+        backup_path = pathlib.Path(backup_dir) / f'{target.name}.shadow.bak'
+        shutil.copy2(shadow_target, backup_path)
+    else:
+        backup_path = None
+    shutil.copy2(source, shadow_target)
+    copied_targets.append(str(target))
+    return {
+        'backup': str(backup_path) if backup_path else None,
+        'target_after_sha256': sha256_file(shadow_target),
+        'shadow_target': str(shadow_target),
+    }
+
+def shadow_run_reload(target, allow_reload):
+    assert allow_reload is False
+    return {'status': 'skipped', 'detail': 'shadow harness blocks live reloads'}
+
+module.copy_with_backup = shadow_copy_with_backup
+module.run_reload = shadow_run_reload
+
+plan = module.load_json(pathlib.Path(plan_path))
+approval = module.load_json(pathlib.Path(approval_path))
+args = SimpleNamespace(
+    execute=True,
+    backup_dir=backup_dir,
+    reload_after_restore=False,
+    max_approval_age_seconds=15 * 60,
+)
+result = module.execute(plan, approval, args)
+assert result['decision'] == 'restore_executed', result
+assert result['mode'] == 'execute', result
+assert result['changes_live_state'] is True, result
+assert copied_targets == ['/etc/host_vm_comm_guard.conf', '/etc/nftables.d/host_vm_comm_guard.nft'], result
+restored = [action for action in result['actions'] if action.get('status') == 'restored']
+assert len(restored) == 2, result
+assert all(action['reload']['status'] == 'skipped' for action in restored), result
+for action in restored:
+    assert action['target_after_sha256'] == action['source_sha256'] if 'source_sha256' in action else True
+    assert pathlib.Path(action['shadow_target']).exists(), action
+print(json.dumps({'decision': result['decision'], 'restored': copied_targets}, sort_keys=True))
 PY
 
 # Refusal: an otherwise valid dry-run must block when the known-good source hash no longer
