@@ -16,3 +16,11 @@ repos:
     hooks:
       - id: shellcheck
         files: '\.sh$'
+  - repo: local
+    hooks:
+      - id: kali-hardening-static-security-checks
+        name: Kali hardening repo static security checks
+        entry: bash tests/run_static_security_checks.sh
+        language: system
+        pass_filenames: false
+        always_run: true
