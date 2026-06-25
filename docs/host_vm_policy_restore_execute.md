@@ -48,6 +48,12 @@ sudo /usr/local/bin/host_vm_policy_restore_execute.py --execute --reload-after-r
 
 The executor deliberately does not run from a timer. The service unit exists for controlled one-shot invocation and is not enabled by first boot.
 
+## Test coverage
+
+`tests/test_host_vm_policy_restore_execute_integration.sh` covers realistic dry-run approval, stale-approval refusal, known-good hash mismatch refusal, and the approved execute branch. The execute-branch test imports the executor and monkeypatches copy/reload functions into a temporary shadow root, so it validates the restore decision and action metadata without writing to live `/etc` or invoking `systemctl`/`nft`.
+
+`tests/test_host_vm_policy_restore_execute_integration_static.sh` runs that integration fixture from the repo-wide static gate so the release checks fail closed if the manual executor path regresses.
+
 ## Rationale
 
 Recent secure rollback research argues that legitimate recovery needs explicit authorization, freshness checks, audit output, and mediated state transitions rather than blind rollback. The executor follows that pattern for local Kali host/VM communication policy recovery while preserving a safe dry-run default.
