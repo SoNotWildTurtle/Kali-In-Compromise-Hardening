@@ -150,6 +150,9 @@ fi
 if [ -x /usr/local/bin/host_vm_policy_attest.py ]; then
     /usr/local/bin/host_vm_policy_attest.py >/var/log/host_vm_policy_attest.firstboot.log 2>&1 || true
 fi
+if systemctl list-unit-files | grep -q '^host_vm_policy_verify.timer'; then
+    systemctl enable --now host_vm_policy_verify.timer || true
+fi
 if systemctl list-unit-files | grep -q '^internet_access_monitor.timer'; then
     systemctl start internet_access_monitor.timer
 fi
@@ -238,6 +241,12 @@ fi
 # Refresh host/VM attestation after late firstboot hardening has run.
 if [ -x /usr/local/bin/host_vm_policy_attest.py ]; then
     /usr/local/bin/host_vm_policy_attest.py >/var/log/host_vm_policy_attest.final.log 2>&1 || true
+fi
+
+# Initialize and verify the known-good communication baseline after final attestation.
+if [ -x /usr/local/bin/host_vm_policy_verify.py ]; then
+    /usr/local/bin/host_vm_policy_verify.py --init-baseline >/var/log/host_vm_policy_verify.init.log 2>&1 || true
+    /usr/local/bin/host_vm_policy_verify.py >/var/log/host_vm_policy_verify.firstboot.log 2>&1 || true
 fi
 
 # Disable this first boot service so it runs only once
