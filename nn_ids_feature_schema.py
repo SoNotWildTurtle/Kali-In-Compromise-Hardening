@@ -55,7 +55,7 @@ def feature_schema() -> dict[str, object]:
         "ranges": {name: list(bounds) for name, bounds in FEATURE_RANGES.items()},
         "notes": [
             "Feature order is part of the model contract.",
-            "Training data may include extra columns only if the trainer explicitly maps them away.",
+            "Training data may include extra columns only if mapped away.",
             "Live inference must produce exactly this ordered vector.",
         ],
     }
@@ -65,7 +65,8 @@ def save_feature_schema(path: Path = DEFAULT_SCHEMA_PATH) -> None:
     """Persist the canonical schema for audit, rollback, and PR review."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(feature_schema(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    schema_json = json.dumps(feature_schema(), indent=2, sort_keys=True)
+    path.write_text(f"{schema_json}\n", encoding="utf-8")
 
 
 def validate_columns(columns: Iterable[str], require_label: bool = True) -> SchemaCheck:
@@ -93,11 +94,13 @@ def validate_feature_vector(values: Sequence[object]) -> SchemaCheck:
     """Validate a live packet feature vector before model inference."""
 
     errors: list[str] = []
-    warnings: list[str] = []
     if len(values) != len(FEATURE_NAMES):
         return SchemaCheck(
             ok=False,
-            errors=(f"expected {len(FEATURE_NAMES)} features, received {len(values)}",),
+            errors=(
+                f"expected {len(FEATURE_NAMES)} features, "
+                f"received {len(values)}"
+            ),
             warnings=(),
         )
 
@@ -108,9 +111,11 @@ def validate_feature_vector(values: Sequence[object]) -> SchemaCheck:
             continue
         low, high = FEATURE_RANGES[name]
         if number < low or number > high:
-            errors.append(f"{name}={number:g} outside expected range {low:g}..{high:g}")
+            errors.append(
+                f"{name}={number:g} outside expected range {low:g}..{high:g}"
+            )
 
-    return SchemaCheck(ok=not errors, errors=tuple(errors), warnings=tuple(warnings))
+    return SchemaCheck(ok=not errors, errors=tuple(errors), warnings=())
 
 
 def select_training_columns(dataframe):
@@ -134,7 +139,10 @@ def population_stability_index(
     if len(exp) < buckets or not act:
         return 0.0
 
-    cut_points = [exp[max(0, min(len(exp) - 1, round(len(exp) * i / buckets)))] for i in range(1, buckets)]
+    cut_points = []
+    for idx in range(1, buckets):
+        position = round(len(exp) * idx / buckets)
+        cut_points.append(exp[max(0, min(len(exp) - 1, position))])
     exp_counts = [0] * buckets
     act_counts = [0] * buckets
 
@@ -160,11 +168,15 @@ def population_stability_index(
     return psi
 
 
-def write_drift_report(scores: Mapping[str, float], path: Path = DEFAULT_DRIFT_PATH) -> None:
+def write_drift_report(
+    scores: Mapping[str, float],
+    path: Path = DEFAULT_DRIFT_PATH,
+) -> None:
     """Append drift scores in an auditable, line-oriented JSON format."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.open("a", encoding="utf-8").write(json.dumps(dict(scores), sort_keys=True) + "\n")
+    line = json.dumps(dict(scores), sort_keys=True)
+    path.open("a", encoding="utf-8").write(f"{line}\n")
 
 
 def main() -> None:
