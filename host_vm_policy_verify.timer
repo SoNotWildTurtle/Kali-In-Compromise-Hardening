@@ -1,0 +1,12 @@
+[Unit]
+Description=Run host/VM policy attestation verification periodically
+
+[Timer]
+OnBootSec=20min
+OnUnitActiveSec=6h
+RandomizedDelaySec=10min
+Persistent=true
+Unit=host_vm_policy_verify.service
+
+[Install]
+WantedBy=timers.target
