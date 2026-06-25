@@ -161,6 +161,17 @@ def render_json(summaries: list[EvidenceSummary]) -> str:
     return json.dumps(payload, indent=2, sort_keys=True)
 
 
+def _safe_summarize(paths: list[str]) -> tuple[list[EvidenceSummary], list[str]]:
+    summaries: list[EvidenceSummary] = []
+    errors: list[str] = []
+    for path in paths:
+        try:
+            summaries.append(summarize_evidence(path))
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            errors.append(str(exc))
+    return summaries, errors
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Summarize host/VM channel-policy JSON evidence artifacts."
@@ -188,7 +199,12 @@ def main(argv: list[str] | None = None) -> int:
         print("Missing evidence file(s): " + ", ".join(missing), file=sys.stderr)
         return 2
 
-    summaries = [summarize_evidence(path) for path in paths]
+    summaries, errors = _safe_summarize(paths)
+    if errors:
+        for error in errors:
+            print(f"Evidence summary error: {error}", file=sys.stderr)
+        return 2
+
     print(render_json(summaries) if args.json else render_text(summaries))
 
     if args.require_pass and (not summaries or not all(summary.ok for summary in summaries)):
