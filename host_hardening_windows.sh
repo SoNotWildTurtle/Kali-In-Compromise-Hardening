@@ -23,8 +23,8 @@ WARN
         return 0
     fi
 
-    if [ ! -x "$CHANNEL_POLICY_VALIDATOR" ]; then
-        echo "Channel policy validator is missing or not executable: $CHANNEL_POLICY_VALIDATOR" >&2
+    if [ ! -r "$CHANNEL_POLICY_VALIDATOR" ]; then
+        echo "Channel policy validator is missing or unreadable: $CHANNEL_POLICY_VALIDATOR" >&2
         exit 1
     fi
 
