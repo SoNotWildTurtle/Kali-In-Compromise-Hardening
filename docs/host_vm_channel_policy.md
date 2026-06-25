@@ -109,6 +109,8 @@ Emit a dashboard-friendly aggregate JSON document:
 python3 channel_policy_health_summary.py artifacts/channel-policy/*.json --json > artifacts/channel-policy/summary.json
 ```
 
+Malformed or schema-incompatible evidence is treated as a hard validation error. The tool prints `Evidence summary error:` to stderr and returns exit code `2`, so CI can distinguish unreadable evidence from a policy report that was readable but failed one or more controls.
+
 Recommended CI flow:
 
 1. Run the host-hardening entrypoint with `CHANNEL_POLICY_REPORT` set.
