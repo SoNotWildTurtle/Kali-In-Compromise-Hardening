@@ -56,6 +56,8 @@ if data['signature'].get('signed') is not False:
     raise SystemExit('no-sign mode should report signed=false')
 if not isinstance(data['guard_files'], list) or len(data['guard_files']) < 2:
     raise SystemExit('expected guard file digest entries')
+if 'host_vm_policy_verify.timer' not in data['systemd']:
+    raise SystemExit('attestation should capture policy verifier timer state')
 PY
 
 grep -q '^snapshot_sha256=' "$TMP_DIR/policy_attestation.report" || fail 'compact report missing snapshot hash'
