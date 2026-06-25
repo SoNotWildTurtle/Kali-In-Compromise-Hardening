@@ -85,7 +85,7 @@ required_order = [
     'host_vm_policy_attest.py',
     'host_vm_policy_verify.timer',
     'host_vm_policy_verify.py --init-baseline',
-    'host_vm_policy_verify.py',
+    'host_vm_policy_verify.firstboot.log',
 ]
 positions = []
 for token in required_order:
