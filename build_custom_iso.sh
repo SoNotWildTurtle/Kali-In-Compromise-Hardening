@@ -93,6 +93,9 @@ core_modules=(
     "ids_menu.sh"
     "host_vm_comm_guard.sh"
     "host_vm_comm_guard.service"
+    "host_vm_policy_attest.py"
+    "host_vm_policy_attest.service"
+    "host_vm_policy_attest.timer"
     "vm_smoke_check.sh"
 )
 
