@@ -22,9 +22,26 @@ Default outputs:
 - `/var/lib/host_vm_comm_guard/policy_restore_plan.json` records the current review plan.
 - `/var/log/host_vm_policy_restore_plan.report` provides a compact text summary.
 
+## ISO packaging
+
+The ISO build now requires and packages:
+
+- `host_vm_policy_restore_plan.py`
+- `host_vm_policy_restore_plan.service`
+- `host_vm_policy_restore_plan.timer`
+
+Keeping the restore planner in `build_custom_iso.sh` prevents a gap where verification reports `restore_review` but the installed VM lacks the tool that tells the operator exactly which reviewed policy files would need attention.
+
 ## First boot
 
-After final attestation and baseline verification, first boot captures the known-good policy state and writes an initial plan. If no restore is needed, the plan decision is `no_restore_needed`.
+After final attestation and baseline verification, first boot captures the known-good policy state and writes an initial plan:
+
+```bash
+/usr/local/bin/host_vm_policy_restore_plan.py --capture-known-good
+/usr/local/bin/host_vm_policy_restore_plan.py
+```
+
+If no restore is needed, the plan decision is `no_restore_needed`. The timer is also enabled so future verification drift produces a fresh review plan without changing live policy.
 
 ## Timer behavior
 
@@ -34,6 +51,10 @@ The timer reruns the planner periodically. If the verifier later reports `restor
 - `restore_blocked_missing_known_good`
 - `already_restored`
 - `no_restore_needed`
+
+## Smoke and regression validation
+
+`vm_smoke_check.sh` now validates restore planner installation, timer presence, firstboot logs, the compact report, the JSON plan, and the known-good manifest. `tests/test_restore_planner_wiring_static.sh` prevents future changes from accidentally omitting the planner from ISO packaging, firstboot, smoke validation, or systemd sandboxing.
 
 ## Recovery posture
 
