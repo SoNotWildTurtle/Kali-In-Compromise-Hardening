@@ -93,6 +93,7 @@ core_modules=(
     "ids_menu.sh"
     "host_vm_comm_guard.sh"
     "host_vm_comm_guard.service"
+    "vm_smoke_check.sh"
 )
 
 ids_modules=(
