@@ -150,6 +150,8 @@ def build_snapshot(args: argparse.Namespace) -> Dict[str, Any]:
             'nn_ids_model_audit.timer',
             'nn_ids_audit_gate.timer',
             'nn_ids_restore.timer',
+            'host_vm_policy_attest.timer',
+            'host_vm_policy_verify.timer',
         ]),
         'ids_model_audit': safe_read_json(Path(args.ids_audit)),
         'ids_audit_gate': safe_read_json(Path(args.ids_gate)),
