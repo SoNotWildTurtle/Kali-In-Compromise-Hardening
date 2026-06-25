@@ -81,20 +81,25 @@ required_order = [
     'nn_ids_model_audit.py',
     'nn_ids_audit_gate.timer',
     'nn_ids_audit_gate.py',
+    'host_vm_policy_attest.timer',
+    'host_vm_policy_attest.py',
 ]
 positions = []
 for token in required_order:
     pos = firstboot.find(token)
     if pos == -1:
-        errors.append(f'firstboot.sh missing NN audit chain token {token}')
+        errors.append(f'firstboot.sh missing audit/attestation chain token {token}')
     positions.append(pos)
 if all(pos >= 0 for pos in positions) and positions != sorted(positions):
-    errors.append('firstboot.sh should run model audit before audit gate')
+    errors.append('firstboot.sh should run model audit, audit gate, then policy attestation')
 
 # Critical guardrails added by recent runs should remain packaged.
 for token in [
     'host_vm_comm_guard.sh',
     'host_vm_comm_guard.service',
+    'host_vm_policy_attest.py',
+    'host_vm_policy_attest.service',
+    'host_vm_policy_attest.timer',
     'nn_ids_model_audit.py',
     'nn_ids_model_audit.service',
     'nn_ids_model_audit.timer',
@@ -113,7 +118,7 @@ print('[static-check] ISO and firstboot wiring checks passed')
 PY
 
 note "checking baseline hardening in high-risk systemd units"
-for unit in nn_ids_model_audit.service nn_ids_audit_gate.service host_vm_comm_guard.service; do
+for unit in nn_ids_model_audit.service nn_ids_audit_gate.service host_vm_comm_guard.service host_vm_policy_attest.service; do
     require_file "$unit"
     grep -q '^NoNewPrivileges=true' "$unit" || fail "$unit missing NoNewPrivileges=true"
     grep -q '^PrivateTmp=true' "$unit" || fail "$unit missing PrivateTmp=true"
