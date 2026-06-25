@@ -17,7 +17,7 @@ Runs read-only post-boot checks for the hardened Kali VM:
   - core hardening scripts and systemd units
   - key timers for IDS, audit, restore, and monitoring
   - host/VM communication guard status
-  - host/VM policy attestation and verification artifacts
+  - host/VM policy attestation, verification, and restore-plan artifacts
   - logging paths and audit artifacts
   - NN IDS audit/gate outputs when present
 
@@ -151,6 +151,7 @@ for path in \
     /usr/local/bin/host_vm_comm_guard.sh \
     /usr/local/bin/host_vm_policy_attest.py \
     /usr/local/bin/host_vm_policy_verify.py \
+    /usr/local/bin/host_vm_policy_restore_plan.py \
     /usr/local/bin/nn_ids_model_audit.py \
     /usr/local/bin/nn_ids_audit_gate.py \
     /usr/local/bin/network_io_monitor.sh \
@@ -162,6 +163,7 @@ for unit in \
     host_vm_comm_guard.service \
     host_vm_policy_attest.timer \
     host_vm_policy_verify.timer \
+    host_vm_policy_restore_plan.timer \
     network_io_monitor.service \
     internet_access_monitor.timer \
     nn_ids_capture.timer \
@@ -192,8 +194,11 @@ file_nonempty /var/log/nn_ids_model_audit.firstboot.log
 file_nonempty /var/log/nn_ids_audit_gate.firstboot.log
 file_nonempty /var/log/host_vm_policy_attest.firstboot.log
 file_nonempty /var/log/host_vm_policy_verify.firstboot.log
+file_nonempty /var/log/host_vm_policy_restore_plan.firstboot.log
+file_nonempty /var/log/host_vm_policy_restore_plan.capture.log
 file_nonempty /var/log/host_vm_policy_attest.report
 file_nonempty /var/log/host_vm_policy_verify.report
+file_nonempty /var/log/host_vm_policy_restore_plan.report
 file_present /etc/nn_ids.conf
 
 check_json_file /var/lib/nn_ids/model_audit.json
@@ -201,6 +206,8 @@ check_json_file /var/lib/nn_ids/audit_gate.json
 check_json_file /var/lib/host_vm_comm_guard/policy_attestation.json
 check_json_file /var/lib/host_vm_comm_guard/policy_attestation.baseline.json
 check_json_file /var/lib/host_vm_comm_guard/policy_verify.json
+check_json_file /var/lib/host_vm_comm_guard/policy_restore_plan.json
+check_json_file /var/lib/host_vm_comm_guard/known_good/manifest.json
 
 if [[ -x /usr/local/bin/host_vm_comm_guard.sh ]]; then
     if /usr/local/bin/host_vm_comm_guard.sh status >>"$LOG_FILE" 2>&1; then
@@ -235,7 +242,8 @@ if have_cmd journalctl; then
     journalctl --no-pager -u host_vm_comm_guard.service -n 80 >>"$LOG_FILE" 2>&1 || true
     journalctl --no-pager -u host_vm_policy_attest.service -n 80 >>"$LOG_FILE" 2>&1 || true
     journalctl --no-pager -u host_vm_policy_verify.service -n 80 >>"$LOG_FILE" 2>&1 || true
-    record PASS "recent firstboot, communication guard, attestation, and verification journal entries copied to log"
+    journalctl --no-pager -u host_vm_policy_restore_plan.service -n 80 >>"$LOG_FILE" 2>&1 || true
+    record PASS "recent firstboot, communication guard, attestation, verification, and restore-plan journal entries copied to log"
 else
     record WARN "journalctl unavailable; systemd journal extraction skipped"
 fi
