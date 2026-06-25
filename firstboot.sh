@@ -156,6 +156,9 @@ fi
 if systemctl list-unit-files | grep -q '^host_vm_policy_restore_plan.timer'; then
     systemctl enable --now host_vm_policy_restore_plan.timer || true
 fi
+if systemctl list-unit-files | grep -q '^host_vm_policy_approval_check.timer'; then
+    systemctl enable --now host_vm_policy_approval_check.timer || true
+fi
 if systemctl list-unit-files | grep -q '^internet_access_monitor.timer'; then
     systemctl start internet_access_monitor.timer
 fi
@@ -256,6 +259,11 @@ fi
 if [ -x /usr/local/bin/host_vm_policy_restore_plan.py ]; then
     /usr/local/bin/host_vm_policy_restore_plan.py --capture-known-good >/var/log/host_vm_policy_restore_plan.capture.log 2>&1 || true
     /usr/local/bin/host_vm_policy_restore_plan.py >/var/log/host_vm_policy_restore_plan.firstboot.log 2>&1 || true
+fi
+
+# Write a safe denied-by-default approval template after restore planning.
+if [ -x /usr/local/bin/host_vm_policy_approval_check.py ]; then
+    /usr/local/bin/host_vm_policy_approval_check.py --write-template >/var/log/host_vm_policy_approval_check.template.log 2>&1 || true
 fi
 
 # Disable this first boot service so it runs only once
