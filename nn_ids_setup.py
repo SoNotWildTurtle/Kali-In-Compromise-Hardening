@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""nn_ids_setup.py - Download datasets and train a schema-bound neural network IDS."""
+"""Download datasets and train a schema-bound neural network IDS."""
 
 from pathlib import Path
 import hashlib
@@ -19,7 +19,10 @@ try:
     from sklearn.pipeline import Pipeline
     from sklearn.preprocessing import StandardScaler
 
-    from nn_ids_feature_schema import save_feature_schema, select_training_columns
+    from nn_ids_feature_schema import (
+        save_feature_schema,
+        select_training_columns,
+    )
 except ImportError:
     print(
         "Required Python packages not installed. Please install pandas, "
@@ -126,7 +129,14 @@ def train_model() -> None:
     clf = Pipeline(
         steps=[
             ("scale", StandardScaler()),
-            ("mlp", MLPClassifier(hidden_layer_sizes=(64, 64), max_iter=50, random_state=42)),
+            (
+                "mlp",
+                MLPClassifier(
+                    hidden_layer_sizes=(64, 64),
+                    max_iter=50,
+                    random_state=42,
+                ),
+            ),
         ]
     )
     clf.fit(aug_X, aug_y)
@@ -142,7 +152,8 @@ def train_model() -> None:
     with METRICS_PATH.open("a", encoding="utf-8") as log:
         log.write(
             "Initial training "
-            f"accuracy={acc:.4f} f1={f1:.4f} precision={precision:.4f} recall={recall:.4f}\n"
+            f"accuracy={acc:.4f} f1={f1:.4f} "
+            f"precision={precision:.4f} recall={recall:.4f}\n"
         )
     print(f"Model trained and saved to {MODEL_PATH}")
 
