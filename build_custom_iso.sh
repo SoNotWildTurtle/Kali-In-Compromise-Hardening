@@ -99,6 +99,9 @@ core_modules=(
     "host_vm_policy_verify.py"
     "host_vm_policy_verify.service"
     "host_vm_policy_verify.timer"
+    "host_vm_policy_restore_plan.py"
+    "host_vm_policy_restore_plan.service"
+    "host_vm_policy_restore_plan.timer"
     "vm_smoke_check.sh"
 )
 
