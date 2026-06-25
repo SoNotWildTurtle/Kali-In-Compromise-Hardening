@@ -47,6 +47,7 @@ import sys
 root = pathlib.Path('.')
 build = (root / 'build_custom_iso.sh').read_text(encoding='utf-8')
 firstboot = (root / 'firstboot.sh').read_text(encoding='utf-8')
+smoke = (root / 'vm_smoke_check.sh').read_text(encoding='utf-8')
 errors = []
 
 # All repository systemd units should be explicitly packaged unless generated at build time.
@@ -106,6 +107,8 @@ for token in [
     'host_vm_policy_verify.py',
     'host_vm_policy_verify.service',
     'host_vm_policy_verify.timer',
+    'host_vm_policy_restore_execute.py',
+    'host_vm_policy_restore_execute.service',
     'nn_ids_model_audit.py',
     'nn_ids_model_audit.service',
     'nn_ids_model_audit.timer',
@@ -116,15 +119,35 @@ for token in [
     if f'"{token}"' not in build and f"'{token}'" not in build:
         errors.append(f'build_custom_iso.sh missing critical module {token}')
 
+# The restore executor must be smoke-check visible but never timer-driven.
+for token in [
+    '/usr/local/bin/host_vm_policy_restore_execute.py',
+    'host_vm_policy_restore_execute.service',
+    '/var/lib/host_vm_comm_guard/policy_restore_execute.json',
+    '/var/log/host_vm_policy_restore_execute.report',
+]:
+    if token not in smoke:
+        errors.append(f'vm_smoke_check.sh missing restore executor token {token}')
+if (root / 'host_vm_policy_restore_execute.timer').exists():
+    errors.append('manual restore executor must not have a timer file')
+if 'host_vm_policy_restore_execute.timer' in build or 'host_vm_policy_restore_execute.timer' in firstboot:
+    errors.append('manual restore executor timer must not be packaged or firstboot-wired')
+
 if errors:
     for error in errors:
         print(f'[static-check][FAIL] {error}', file=sys.stderr)
     sys.exit(1)
-print('[static-check] ISO and firstboot wiring checks passed')
+print('[static-check] ISO, firstboot, smoke, and restore-executor wiring checks passed')
 PY
 
 note "checking baseline hardening in high-risk systemd units"
-for unit in nn_ids_model_audit.service nn_ids_audit_gate.service host_vm_comm_guard.service host_vm_policy_attest.service host_vm_policy_verify.service; do
+for unit in \
+    nn_ids_model_audit.service \
+    nn_ids_audit_gate.service \
+    host_vm_comm_guard.service \
+    host_vm_policy_attest.service \
+    host_vm_policy_verify.service \
+    host_vm_policy_restore_execute.service; do
     require_file "$unit"
     grep -q '^NoNewPrivileges=true' "$unit" || fail "$unit missing NoNewPrivileges=true"
     grep -q '^PrivateTmp=true' "$unit" || fail "$unit missing PrivateTmp=true"
