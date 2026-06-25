@@ -75,7 +75,7 @@ for unit_name in sorted(unit_refs):
     if not (root / unit_name).exists():
         errors.append(f'firstboot.sh references missing unit {unit_name}')
 
-# Make sure the critical NN audit chain remains wired in order.
+# Make sure the critical NN audit/attestation/verification chain remains wired in order.
 required_order = [
     'nn_ids_model_audit.timer',
     'nn_ids_model_audit.py',
@@ -83,15 +83,18 @@ required_order = [
     'nn_ids_audit_gate.py',
     'host_vm_policy_attest.timer',
     'host_vm_policy_attest.py',
+    'host_vm_policy_verify.timer',
+    'host_vm_policy_verify.py --init-baseline',
+    'host_vm_policy_verify.py',
 ]
 positions = []
 for token in required_order:
     pos = firstboot.find(token)
     if pos == -1:
-        errors.append(f'firstboot.sh missing audit/attestation chain token {token}')
+        errors.append(f'firstboot.sh missing audit/attestation/verification chain token {token}')
     positions.append(pos)
 if all(pos >= 0 for pos in positions) and positions != sorted(positions):
-    errors.append('firstboot.sh should run model audit, audit gate, then policy attestation')
+    errors.append('firstboot.sh should run model audit, audit gate, policy attestation, then policy verification')
 
 # Critical guardrails added by recent runs should remain packaged.
 for token in [
@@ -100,6 +103,9 @@ for token in [
     'host_vm_policy_attest.py',
     'host_vm_policy_attest.service',
     'host_vm_policy_attest.timer',
+    'host_vm_policy_verify.py',
+    'host_vm_policy_verify.service',
+    'host_vm_policy_verify.timer',
     'nn_ids_model_audit.py',
     'nn_ids_model_audit.service',
     'nn_ids_model_audit.timer',
@@ -118,7 +124,7 @@ print('[static-check] ISO and firstboot wiring checks passed')
 PY
 
 note "checking baseline hardening in high-risk systemd units"
-for unit in nn_ids_model_audit.service nn_ids_audit_gate.service host_vm_comm_guard.service host_vm_policy_attest.service; do
+for unit in nn_ids_model_audit.service nn_ids_audit_gate.service host_vm_comm_guard.service host_vm_policy_attest.service host_vm_policy_verify.service; do
     require_file "$unit"
     grep -q '^NoNewPrivileges=true' "$unit" || fail "$unit missing NoNewPrivileges=true"
     grep -q '^PrivateTmp=true' "$unit" || fail "$unit missing PrivateTmp=true"
