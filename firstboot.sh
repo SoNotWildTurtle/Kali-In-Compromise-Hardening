@@ -138,6 +138,12 @@ fi
 if [ -x /usr/local/bin/nn_ids_model_audit.py ]; then
     /usr/local/bin/nn_ids_model_audit.py >/var/log/nn_ids_model_audit.firstboot.log 2>&1 || true
 fi
+if systemctl list-unit-files | grep -q '^nn_ids_audit_gate.timer'; then
+    systemctl enable --now nn_ids_audit_gate.timer || true
+fi
+if [ -x /usr/local/bin/nn_ids_audit_gate.py ]; then
+    /usr/local/bin/nn_ids_audit_gate.py >/var/log/nn_ids_audit_gate.firstboot.log 2>&1 || true
+fi
 if systemctl list-unit-files | grep -q '^internet_access_monitor.timer'; then
     systemctl start internet_access_monitor.timer
 fi
