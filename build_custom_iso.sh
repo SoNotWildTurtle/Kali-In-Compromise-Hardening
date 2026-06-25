@@ -96,6 +96,9 @@ core_modules=(
     "host_vm_policy_attest.py"
     "host_vm_policy_attest.service"
     "host_vm_policy_attest.timer"
+    "host_vm_policy_verify.py"
+    "host_vm_policy_verify.service"
+    "host_vm_policy_verify.timer"
     "vm_smoke_check.sh"
 )
 
@@ -217,16 +220,3 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 SERVICE
-
-chmod +x "$INSTALL_DIR"/*.sh 2>/dev/null || true
-chmod +x "$INSTALL_DIR"/*.py 2>/dev/null || true
-
-mkisofs -D -r -V "Kali Custom" -cache-inodes -J -l \
-    -b isolinux/isolinux.bin \
-    -c isolinux/boot.cat \
-    -no-emul-boot -boot-load-size 4 -boot-info-table \
-    -o "$OUT_ISO" "$EXTRACT_DIR"
-
-isohybrid "$OUT_ISO"
-
-echo "Custom ISO created at $OUT_ISO"
