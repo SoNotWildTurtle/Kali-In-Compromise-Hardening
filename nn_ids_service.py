@@ -50,13 +50,16 @@ def trigger_discovery() -> None:
             stderr=subprocess.DEVNULL,
         )
     elif DISCOVERY_MODE == "manual" and NOTIFY_ENABLED:
-        subprocess.run(["wall", "Run /usr/local/bin/network_discovery.sh for details"], check=False)
+        subprocess.run(
+            ["wall", "Run /usr/local/bin/network_discovery.sh for details"],
+            check=False,
+        )
     elif DISCOVERY_MODE == "notify" and NOTIFY_ENABLED:
-        subprocess.run(["wall", "Malicious traffic detected"], check=False)
+        subprocess.run(["wall", "Suspicious traffic detected"], check=False)
 
 
 def predict_probability(feats) -> float:
-    """Return malicious probability while supporting older estimators."""
+    """Return alert probability while supporting older estimators."""
 
     if hasattr(clf, "predict_proba"):
         return float(clf.predict_proba([feats])[0][1])
@@ -73,14 +76,17 @@ def analyze(pkt):
 
     check = validate_feature_vector(feats)
     if not check.ok:
-        log_alert(f"Dropped invalid feature vector from packet: {'; '.join(check.errors)}")
+        log_alert(
+            "Dropped invalid feature vector from packet: "
+            f"{'; '.join(check.errors)}"
+        )
         return
 
     probability = predict_probability(feats)
     key = tuple(feats)
     if probability >= ALERT_THRESHOLD:
         confidence = "High" if probability >= HIGH_CONFIDENCE_THRESHOLD else "Low"
-        message = f"{confidence} confidence threat ({probability:.2f}): {pkt.summary()}"
+        message = f"{confidence} confidence alert ({probability:.2f}): {pkt.summary()}"
         log_alert(message)
         notify(message)
         trigger_discovery()
