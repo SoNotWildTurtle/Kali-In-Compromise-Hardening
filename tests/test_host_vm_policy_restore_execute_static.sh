@@ -38,21 +38,20 @@ if ! grep -q "deliberately does not run from a timer" "$DOC"; then
     exit 1
 fi
 
-mkdir -p "$TMPDIR/kg" "$TMPDIR/etc" "$TMPDIR/out" "$TMPDIR/log"
+mkdir -p "$TMPDIR/kg" "$TMPDIR/out" "$TMPDIR/log"
 printf 'known-good-conf\n' > "$TMPDIR/kg/host_vm_comm_guard.conf"
-printf 'current-conf\n' > "$TMPDIR/etc/host_vm_comm_guard.conf"
 KG_SHA="$(sha256sum "$TMPDIR/kg/host_vm_comm_guard.conf" | awk '{print $1}')"
 NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-python3 - "$TMPDIR/plan.json" "$TMPDIR/kg/host_vm_comm_guard.conf" "$TMPDIR/etc/host_vm_comm_guard.conf" "$KG_SHA" "$NOW" <<'PY'
+python3 - "$TMPDIR/plan.json" "$TMPDIR/kg/host_vm_comm_guard.conf" "$KG_SHA" "$NOW" <<'PY'
 import json, sys
-plan, source, target, sha, now = sys.argv[1:]
+plan, source, sha, now = sys.argv[1:]
 json.dump({
     'decision': 'manual_restore_review_required',
     'created_utc': now,
     'actions': [{
         'name': 'host_vm_comm_guard.conf',
         'source': source,
-        'target': target,
+        'target': '/etc/host_vm_comm_guard.conf',
         'status': 'manual_restore_candidate',
         'known_good': {'sha256': sha},
     }],
@@ -75,12 +74,14 @@ python3 "$SCRIPT" \
     --output "$TMPDIR/out/result.json" \
     --report "$TMPDIR/log/report" >/dev/null
 
-python3 - "$TMPDIR/out/result.json" "$TMPDIR/etc/host_vm_comm_guard.conf" <<'PY'
-import json, pathlib, sys
+python3 - "$TMPDIR/out/result.json" <<'PY'
+import json, sys
 result = json.load(open(sys.argv[1]))
 assert result['decision'] == 'restore_ready_dry_run', result
 assert result['changes_live_state'] is False, result
-assert pathlib.Path(sys.argv[2]).read_text() == 'current-conf\n'
+actions = result['actions']
+assert actions and actions[0]['target'] == '/etc/host_vm_comm_guard.conf', actions
+assert actions[0]['status'] == 'preflight_ok', actions
 PY
 
 python3 - "$TMPDIR/approval.json" <<'PY'
