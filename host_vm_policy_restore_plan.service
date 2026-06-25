@@ -1,0 +1,25 @@
+[Unit]
+Description=Review-only host/VM policy restore planner
+Documentation=file:/usr/local/share/doc/kali-hardening/host_vm_policy_restore_plan.md
+After=host_vm_policy_verify.service
+ConditionPathExists=/var/lib/host_vm_comm_guard/policy_verify.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/host_vm_policy_restore_plan.py
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/host_vm_comm_guard /var/log
+ReadOnlyPaths=/etc/host_vm_comm_guard.conf /etc/nftables.d/host_vm_comm_guard.nft
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
