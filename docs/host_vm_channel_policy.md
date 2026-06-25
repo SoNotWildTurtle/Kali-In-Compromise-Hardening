@@ -95,6 +95,27 @@ CHANNEL_POLICY_REPORT=artifacts/channel-policy/linux-preflight.json \
 
 The report contains the same `ok` boolean and finding list emitted by `host_vm_channel_policy.py --json`. A failing policy still stops the entrypoint before remote activity, but the JSON file is preserved so CI, dashboards, or incident-review notes can show exactly which control failed. This also creates a clean handoff point for future health-check and dashboard integrations without parsing terminal text.
 
+### Evidence health summary
+
+`channel_policy_health_summary.py` aggregates one or more preflight evidence files into a compact operator or CI status summary. It is intentionally read-only: it opens local JSON files, counts passing, warning, and failing controls, and exits non-zero with `--require-pass` when any artifact fails.
+
+```bash
+python3 channel_policy_health_summary.py artifacts/channel-policy/*.json --require-pass
+```
+
+Emit a dashboard-friendly aggregate JSON document:
+
+```bash
+python3 channel_policy_health_summary.py artifacts/channel-policy/*.json --json > artifacts/channel-policy/summary.json
+```
+
+Recommended CI flow:
+
+1. Run the host-hardening entrypoint with `CHANNEL_POLICY_REPORT` set.
+2. Upload the raw report as a build artifact even when the preflight fails.
+3. Run `channel_policy_health_summary.py --require-pass` to gate later host-hardening stages.
+4. Publish the aggregate JSON beside IDS, resource, time-sync, and port-monitor status so reviewers can see whether privileged host/VM automation was allowed or blocked before any remote operation.
+
 ### Break-glass override
 
 A break-glass bypass exists only for console-supervised maintenance:
@@ -109,9 +130,9 @@ Use it only when the policy file or validator is unavailable during recovery. Ca
 
 - NIST SP 800-207 Zero Trust Architecture: explicit trust decisions and least-privilege access remain the correct design pattern for management paths.
 - CISA Zero Trust Maturity Model 2.0: identity, device, network, application/workload, and data pillars map cleanly onto host/VM channel policy checks.
-- 2025 identity-control-plane and identity-based segmentation research supports scoped automation credentials, workload identity, and policy-controlled machine-to-machine access.
+- 2025 workload-identity and identity-control-plane research supports scoped automation credentials, workload attestation, and policy-controlled machine-to-machine access.
 - 2025 hypervisor exploitation research continues to show that guest/host boundaries are security boundaries that deserve least-functionality defaults, not shared-folder or clipboard convenience defaults.
 
 ## Rollback
 
-The validator itself is additive. To roll back only the preflight enforcement, revert the changes to `host_hardening_windows.sh`, `host_hardening_linux.sh`, and `tests/test_host_vm_policy_preflight_static.sh`. To remove the full policy feature, also remove `host_vm_channel_policy.py`, `host_vm_channel_policy.example.json`, `tests/test_host_vm_channel_policy_static.sh`, and this document.
+The validator itself is additive. To roll back only the preflight enforcement, revert the changes to `host_hardening_windows.sh`, `host_hardening_linux.sh`, and `tests/test_host_vm_policy_preflight_static.sh`. To remove the evidence summarizer, remove `channel_policy_health_summary.py`, `tests/test_channel_policy_health_summary_static.sh`, and the evidence health summary section above. To remove the full policy feature, also remove `host_vm_channel_policy.py`, `host_vm_channel_policy.example.json`, `tests/test_host_vm_channel_policy_static.sh`, and this document.
