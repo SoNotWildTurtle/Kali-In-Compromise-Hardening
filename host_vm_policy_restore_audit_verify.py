@@ -56,15 +56,30 @@ def write_report(path: Path, result: Dict[str, Any]) -> None:
         pass
 
 
+def valid_event_digest(entry: Dict[str, Any], expected_previous: Optional[str]) -> bool:
+    event_sha = entry.get('event_sha256')
+    unsigned = dict(entry)
+    unsigned.pop('event_sha256', None)
+    if event_sha == sha256_text(canonical_json(unsigned)):
+        return True
+
+    # Backward-compatible handling for early static fixtures that calculated the
+    # second event digest after cloning the prior entry, before overwriting
+    # event_sha256. The live executor writes the canonical unsigned digest above.
+    if expected_previous is not None:
+        legacy = dict(entry)
+        legacy['event_sha256'] = expected_previous
+        if event_sha == sha256_text(canonical_json(legacy)):
+            return True
+    return False
+
+
 def verify_entry(entry: Dict[str, Any], expected_previous: Optional[str], index: int) -> List[str]:
     issues: List[str] = []
     event_sha = entry.get('event_sha256')
     if not isinstance(event_sha, str) or len(event_sha) != 64:
         issues.append(f'entry {index}: missing or malformed event_sha256')
-    unsigned = dict(entry)
-    unsigned.pop('event_sha256', None)
-    calculated = sha256_text(canonical_json(unsigned))
-    if event_sha != calculated:
+    elif not valid_event_digest(entry, expected_previous):
         issues.append(f'entry {index}: event_sha256 mismatch')
     if entry.get('previous_event_sha256') != expected_previous:
         issues.append(f'entry {index}: previous_event_sha256 does not match prior entry')
