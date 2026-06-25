@@ -1,0 +1,56 @@
+name: Restore Executor Release Gate
+
+on:
+  push:
+    paths:
+      - 'host_vm_policy_restore_execute.py'
+      - 'host_vm_policy_restore_execute.service'
+      - 'host_vm_restore_executor_wiring_check.py'
+      - 'build_custom_iso.sh'
+      - 'firstboot.sh'
+      - 'vm_smoke_check.sh'
+      - 'tests/**'
+      - 'docs/host_vm_policy_restore_execute.md'
+      - '.github/workflows/restore-executor-release-gate.yml'
+  pull_request:
+    paths:
+      - 'host_vm_policy_restore_execute.py'
+      - 'host_vm_policy_restore_execute.service'
+      - 'host_vm_restore_executor_wiring_check.py'
+      - 'build_custom_iso.sh'
+      - 'firstboot.sh'
+      - 'vm_smoke_check.sh'
+      - 'tests/**'
+      - 'docs/host_vm_policy_restore_execute.md'
+      - '.github/workflows/restore-executor-release-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restore-executor-release-gate:
+    name: Manual restore executor wiring gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run read-only wiring gate
+        run: |
+          python3 host_vm_restore_executor_wiring_check.py \
+            --root . \
+            --strict \
+            --output /tmp/restore-executor-wiring.json \
+            --report /tmp/restore-executor-wiring.report
+
+      - name: Upload wiring report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-executor-wiring-report
+          path: |
+            /tmp/restore-executor-wiring.json
+            /tmp/restore-executor-wiring.report
+          if-no-files-found: warn
