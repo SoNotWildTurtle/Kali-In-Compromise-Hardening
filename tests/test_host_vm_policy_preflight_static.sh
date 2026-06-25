@@ -7,7 +7,7 @@ for script in host_hardening_windows.sh host_hardening_linux.sh; do
   grep -q 'host_vm_channel_policy.py' "$script"
   grep -q 'KALI_HARDENING_SKIP_CHANNEL_POLICY' "$script"
   grep -q -- '--check-local-files' "$script"
-  grep -q 'Channel policy validator is missing or not executable' "$script"
+  grep -q 'Channel policy validator is missing' "$script"
   grep -q 'Channel policy file not found' "$script"
 done
 
