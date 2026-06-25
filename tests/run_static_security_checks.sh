@@ -59,8 +59,6 @@ for unit in sorted(list(root.glob('*.service')) + list(root.glob('*.timer'))):
 
 # Every packaged module reference should point at a real file, except the firstboot.service
 # generated inside build_custom_iso.sh.
-for match in re.finditer(r'^[[:space:]]*', ''):
-    pass
 packaged = set(re.findall(r'"([A-Za-z0-9_.-]+\.(?:sh|py|service|timer|ps1|conf|cfg|logrotate))"', build))
 for name in sorted(packaged):
     if name == 'firstboot.service':
@@ -70,7 +68,7 @@ for name in sorted(packaged):
 
 # firstboot should only enable/start units that exist in the repo or are generated at ISO build time.
 unit_refs = set(re.findall(r'\^([A-Za-z0-9_.@-]+\.(?:service|timer))', firstboot))
-unit_refs.update(re.findall(r'systemctl\s+(?:enable|start|restart|enable --now)\s+([A-Za-z0-9_.@-]+\.(?:service|timer))', firstboot))
+unit_refs.update(re.findall(r'systemctl\s+(?:enable --now|enable|start|restart)\s+([A-Za-z0-9_.@-]+\.(?:service|timer))', firstboot))
 for unit_name in sorted(unit_refs):
     if unit_name == 'firstboot.service':
         continue
