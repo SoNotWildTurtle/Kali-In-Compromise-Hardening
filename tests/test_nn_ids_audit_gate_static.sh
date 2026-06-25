@@ -61,4 +61,13 @@ grep -q '^RestrictAddressFamilies=AF_UNIX' nn_ids_audit_gate.service
 grep -q '^OnUnitActiveSec=1h' nn_ids_audit_gate.timer
 grep -q 'NN_IDS_GATE_AUTO_ACTIONS=0' docs/nn_ids_audit_gate.md
 
+# Guard against regressions where the gate exists in-tree but is omitted from the ISO.
+grep -q '"nn_ids_audit_gate.py"' build_custom_iso.sh
+grep -q '"nn_ids_audit_gate.service"' build_custom_iso.sh
+grep -q '"nn_ids_audit_gate.timer"' build_custom_iso.sh
+
+grep -q '^if systemctl list-unit-files | grep -q '\''\^nn_ids_audit_gate.timer'\''; then' firstboot.sh
+grep -q 'systemctl enable --now nn_ids_audit_gate.timer' firstboot.sh
+grep -q '/usr/local/bin/nn_ids_audit_gate.py >/var/log/nn_ids_audit_gate.firstboot.log' firstboot.sh
+
 echo "nn_ids_audit_gate static checks passed"
