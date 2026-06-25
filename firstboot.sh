@@ -153,6 +153,9 @@ fi
 if systemctl list-unit-files | grep -q '^host_vm_policy_verify.timer'; then
     systemctl enable --now host_vm_policy_verify.timer || true
 fi
+if systemctl list-unit-files | grep -q '^host_vm_policy_restore_plan.timer'; then
+    systemctl enable --now host_vm_policy_restore_plan.timer || true
+fi
 if systemctl list-unit-files | grep -q '^internet_access_monitor.timer'; then
     systemctl start internet_access_monitor.timer
 fi
@@ -247,6 +250,12 @@ fi
 if [ -x /usr/local/bin/host_vm_policy_verify.py ]; then
     /usr/local/bin/host_vm_policy_verify.py --init-baseline >/var/log/host_vm_policy_verify.init.log 2>&1 || true
     /usr/local/bin/host_vm_policy_verify.py >/var/log/host_vm_policy_verify.firstboot.log 2>&1 || true
+fi
+
+# Capture known-good policy files and write the first review-only restore plan after verification.
+if [ -x /usr/local/bin/host_vm_policy_restore_plan.py ]; then
+    /usr/local/bin/host_vm_policy_restore_plan.py --capture-known-good >/var/log/host_vm_policy_restore_plan.capture.log 2>&1 || true
+    /usr/local/bin/host_vm_policy_restore_plan.py >/var/log/host_vm_policy_restore_plan.firstboot.log 2>&1 || true
 fi
 
 # Disable this first boot service so it runs only once
