@@ -144,6 +144,12 @@ fi
 if [ -x /usr/local/bin/nn_ids_audit_gate.py ]; then
     /usr/local/bin/nn_ids_audit_gate.py >/var/log/nn_ids_audit_gate.firstboot.log 2>&1 || true
 fi
+if systemctl list-unit-files | grep -q '^host_vm_policy_attest.timer'; then
+    systemctl enable --now host_vm_policy_attest.timer || true
+fi
+if [ -x /usr/local/bin/host_vm_policy_attest.py ]; then
+    /usr/local/bin/host_vm_policy_attest.py >/var/log/host_vm_policy_attest.firstboot.log 2>&1 || true
+fi
 if systemctl list-unit-files | grep -q '^internet_access_monitor.timer'; then
     systemctl start internet_access_monitor.timer
 fi
@@ -217,9 +223,6 @@ fi
 if [ -x /usr/local/bin/host_vm_comm_guard.sh ]; then
     /usr/local/bin/host_vm_comm_guard.sh status || true
 fi
-if [ -x /usr/local/bin/anti_wipe_monitor.sh ]; then
-    /usr/local/bin/anti_wipe_monitor.sh || true
-fi
 if systemctl list-unit-files | grep -q '^anti_wipe_monitor.service'; then
     systemctl start anti_wipe_monitor.service
 fi
@@ -230,6 +233,11 @@ fi
 # Perform initial network discovery and diagnostics
 if [ -x /usr/local/bin/network_discovery.sh ]; then
     /usr/local/bin/network_discovery.sh
+fi
+
+# Refresh host/VM attestation after late firstboot hardening has run.
+if [ -x /usr/local/bin/host_vm_policy_attest.py ]; then
+    /usr/local/bin/host_vm_policy_attest.py >/var/log/host_vm_policy_attest.final.log 2>&1 || true
 fi
 
 # Disable this first boot service so it runs only once
