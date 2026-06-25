@@ -8,8 +8,10 @@ grep -q 'Summarize host/VM channel-policy JSON evidence artifacts' channel_polic
 grep -q 'never opens network sockets' channel_policy_health_summary.py
 grep -q 'def summarize_evidence' channel_policy_health_summary.py
 grep -q 'def render_json' channel_policy_health_summary.py
+grep -q 'def _safe_summarize' channel_policy_health_summary.py
 grep -q -- '--require-pass' channel_policy_health_summary.py
 grep -q 'Missing evidence file' channel_policy_health_summary.py
+grep -q 'Evidence summary error' channel_policy_health_summary.py
 grep -q 'Host/VM channel policy evidence summary' channel_policy_health_summary.py
 
 tmpdir="$(mktemp -d)"
@@ -29,21 +31,34 @@ cat >"$tmpdir/fail.json" <<'JSON'
 {
   "ok": false,
   "findings": [
-    {"control": "allow_password_authentication", "level": "fail", "message": "password automation enabled"},
+    {"control": "channel_policy_control", "level": "fail", "message": "unsafe channel setting"},
     {"control": "max_session_minutes", "level": "warn", "message": "long session"}
   ]
 }
 JSON
 
+cat >"$tmpdir/malformed.json" <<'JSON'
+{
+  "ok": true,
+  "findings": "not-a-list"
+}
+JSON
+
 python3 channel_policy_health_summary.py "$tmpdir/pass.json" --require-pass
-if python3 channel_policy_health_summary.py "$tmpdir/fail.json" --require-pass >/tmp/channel_policy_fail.out 2>/tmp/channel_policy_fail.err; then
+if python3 channel_policy_health_summary.py "$tmpdir/fail.json" --require-pass >"$tmpdir/channel_policy_fail.out" 2>"$tmpdir/channel_policy_fail.err"; then
   echo "expected failing evidence to return non-zero with --require-pass" >&2
   exit 1
 fi
 
+if python3 channel_policy_health_summary.py "$tmpdir/malformed.json" >"$tmpdir/channel_policy_malformed.out" 2>"$tmpdir/channel_policy_malformed.err"; then
+  echo "expected malformed evidence to return non-zero" >&2
+  exit 1
+fi
+grep -q 'Evidence summary error' "$tmpdir/channel_policy_malformed.err"
+
 python3 channel_policy_health_summary.py "$tmpdir/pass.json" "$tmpdir/fail.json" --json >"$tmpdir/summary.json"
 grep -q '"ok": false' "$tmpdir/summary.json"
 grep -q '"failing_controls"' "$tmpdir/summary.json"
-grep -q 'allow_password_authentication' "$tmpdir/summary.json"
+grep -q 'channel_policy_control' "$tmpdir/summary.json"
 
 echo "channel policy health summary static tests passed"
