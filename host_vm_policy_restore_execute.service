@@ -1,0 +1,28 @@
+[Unit]
+Description=Manual host/VM policy restore executor (approval-gated)
+Documentation=man:systemd.service(5)
+After=host_vm_policy_approval_check.service
+ConditionPathExists=/var/lib/host_vm_comm_guard/policy_restore_approval_check.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/host_vm_policy_restore_execute.py
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/host_vm_comm_guard /var/log /etc/host_vm_comm_guard.conf /etc/nftables.d
+ReadOnlyPaths=/usr/local/bin
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_FOWNER CAP_NET_ADMIN
+AmbientCapabilities=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
