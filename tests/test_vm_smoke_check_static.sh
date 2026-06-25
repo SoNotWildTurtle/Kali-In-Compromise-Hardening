@@ -46,6 +46,6 @@ done
 
 grep -q 'vm_smoke_check.sh' build_custom_iso.sh || fail 'build_custom_iso.sh should package vm_smoke_check.sh'
 grep -q 'read-only' docs/vm_smoke_check.md || fail 'docs should describe read-only safety model'
-grep -q 'Post-Boot' docs/vm_smoke_check.md || fail 'docs should describe post-boot validation purpose'
+grep -qi 'post-boot' docs/vm_smoke_check.md || fail 'docs should describe post-boot validation purpose'
 
 printf '[vm-smoke-static] all checks passed\n'
