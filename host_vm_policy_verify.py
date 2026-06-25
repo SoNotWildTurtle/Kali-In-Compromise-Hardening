@@ -27,6 +27,7 @@ CRITICAL_GUARD_PATHS = {
 CRITICAL_UNITS = {
     'host_vm_comm_guard.service',
     'host_vm_policy_attest.timer',
+    'host_vm_policy_verify.timer',
     'nn_ids_model_audit.timer',
     'nn_ids_audit_gate.timer',
     'nn_ids_restore.timer',
