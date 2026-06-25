@@ -17,7 +17,7 @@ Runs read-only post-boot checks for the hardened Kali VM:
   - core hardening scripts and systemd units
   - key timers for IDS, audit, restore, and monitoring
   - host/VM communication guard status
-  - host/VM policy attestation, verification, restore-plan, and approval-check artifacts
+  - host/VM policy attestation, verification, restore-plan, approval-check, and manual restore-executor artifacts
   - logging paths and audit artifacts
   - NN IDS audit/gate outputs when present
 
@@ -88,6 +88,15 @@ unit_exists() {
     systemctl list-unit-files "$unit" >/dev/null 2>&1
 }
 
+unit_present() {
+    local unit="$1"
+    if unit_exists "$unit"; then
+        record PASS "systemd unit present: $unit"
+    else
+        record FAIL "systemd unit missing: $unit"
+    fi
+}
+
 unit_active_or_enabled() {
     local unit="$1"
     if ! unit_exists "$unit"; then
@@ -153,6 +162,7 @@ for path in \
     /usr/local/bin/host_vm_policy_verify.py \
     /usr/local/bin/host_vm_policy_restore_plan.py \
     /usr/local/bin/host_vm_policy_approval_check.py \
+    /usr/local/bin/host_vm_policy_restore_execute.py \
     /usr/local/bin/nn_ids_model_audit.py \
     /usr/local/bin/nn_ids_audit_gate.py \
     /usr/local/bin/network_io_monitor.sh \
@@ -184,6 +194,9 @@ for unit in \
     unit_active_or_enabled "$unit"
 done
 
+# Manual restore execution must be packaged and available, but intentionally not timer-driven.
+unit_present host_vm_policy_restore_execute.service
+
 if systemctl is-enabled firstboot.service >/dev/null 2>&1; then
     record WARN "firstboot.service is still enabled; firstboot may not have completed cleanly"
 else
@@ -203,6 +216,7 @@ file_nonempty /var/log/host_vm_policy_attest.report
 file_nonempty /var/log/host_vm_policy_verify.report
 file_nonempty /var/log/host_vm_policy_restore_plan.report
 file_nonempty /var/log/host_vm_policy_approval_check.report
+file_nonempty /var/log/host_vm_policy_restore_execute.report
 file_present /etc/nn_ids.conf
 
 check_json_file /var/lib/nn_ids/model_audit.json
@@ -213,6 +227,7 @@ check_json_file /var/lib/host_vm_comm_guard/policy_verify.json
 check_json_file /var/lib/host_vm_comm_guard/policy_restore_plan.json
 check_json_file /var/lib/host_vm_comm_guard/policy_restore_approval.json
 check_json_file /var/lib/host_vm_comm_guard/policy_restore_approval_check.json
+check_json_file /var/lib/host_vm_comm_guard/policy_restore_execute.json
 check_json_file /var/lib/host_vm_comm_guard/known_good/manifest.json
 
 if [[ -x /usr/local/bin/host_vm_comm_guard.sh ]]; then
@@ -250,7 +265,8 @@ if have_cmd journalctl; then
     journalctl --no-pager -u host_vm_policy_verify.service -n 80 >>"$LOG_FILE" 2>&1 || true
     journalctl --no-pager -u host_vm_policy_restore_plan.service -n 80 >>"$LOG_FILE" 2>&1 || true
     journalctl --no-pager -u host_vm_policy_approval_check.service -n 80 >>"$LOG_FILE" 2>&1 || true
-    record PASS "recent firstboot, communication guard, attestation, verification, restore-plan, and approval-check journal entries copied to log"
+    journalctl --no-pager -u host_vm_policy_restore_execute.service -n 80 >>"$LOG_FILE" 2>&1 || true
+    record PASS "recent firstboot, communication guard, attestation, verification, restore-plan, approval-check, and restore-executor journal entries copied to log"
 else
     record WARN "journalctl unavailable; systemd journal extraction skipped"
 fi
