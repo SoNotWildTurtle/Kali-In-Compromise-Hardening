@@ -72,6 +72,7 @@ Default paths are relative to the script directory:
 CHANNEL_POLICY_VALIDATOR=./host_vm_channel_policy.py
 CHANNEL_POLICY_FILE=./host_vm_channel_policy.example.json
 CHANNEL_POLICY_CHECK_LOCAL_FILES=1
+CHANNEL_POLICY_REPORT=
 ```
 
 Operators can point the entrypoints at a deployed policy without editing the scripts:
@@ -81,6 +82,18 @@ CHANNEL_POLICY_FILE=/etc/kali-hardening/host_vm_channel_policy.json ./host_harde
 ```
 
 Credential-file permission checks are enabled by default for live host-hardening entrypoints because remote automation should not proceed with world-accessible or group-writable key material. CI can set `CHANNEL_POLICY_CHECK_LOCAL_FILES=0` for static-only validation.
+
+### JSON evidence artifacts
+
+Set `CHANNEL_POLICY_REPORT` to write a machine-readable preflight result before the entrypoint attempts SSH connectivity, file transfer, or remote command execution:
+
+```bash
+CHANNEL_POLICY_CHECK_LOCAL_FILES=0 \
+CHANNEL_POLICY_REPORT=artifacts/channel-policy/linux-preflight.json \
+./host_hardening_linux.sh
+```
+
+The report contains the same `ok` boolean and finding list emitted by `host_vm_channel_policy.py --json`. A failing policy still stops the entrypoint before remote activity, but the JSON file is preserved so CI, dashboards, or incident-review notes can show exactly which control failed. This also creates a clean handoff point for future health-check and dashboard integrations without parsing terminal text.
 
 ### Break-glass override
 
