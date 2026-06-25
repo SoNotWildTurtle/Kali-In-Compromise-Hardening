@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHANNEL_POLICY_VALIDATOR="${CHANNEL_POLICY_VALIDATOR:-$SCRIPT_DIR/host_vm_channel_policy.py}"
 CHANNEL_POLICY_FILE="${CHANNEL_POLICY_FILE:-$SCRIPT_DIR/host_vm_channel_policy.example.json}"
 CHANNEL_POLICY_CHECK_LOCAL_FILES="${CHANNEL_POLICY_CHECK_LOCAL_FILES:-1}"
+CHANNEL_POLICY_REPORT="${CHANNEL_POLICY_REPORT:-}"
 
 run_channel_policy_preflight() {
     if [ "${KALI_HARDENING_SKIP_CHANNEL_POLICY:-0}" = "1" ]; then
@@ -39,7 +40,17 @@ WARN
     fi
 
     echo "Validating host/VM hardening channel policy before Windows host automation..."
-    python3 "$CHANNEL_POLICY_VALIDATOR" "${validator_args[@]}"
+    if [ -n "$CHANNEL_POLICY_REPORT" ]; then
+        mkdir -p "$(dirname "$CHANNEL_POLICY_REPORT")"
+        if python3 "$CHANNEL_POLICY_VALIDATOR" "${validator_args[@]}" --json >"$CHANNEL_POLICY_REPORT"; then
+            cat "$CHANNEL_POLICY_REPORT"
+        else
+            cat "$CHANNEL_POLICY_REPORT" >&2
+            exit 1
+        fi
+    else
+        python3 "$CHANNEL_POLICY_VALIDATOR" "${validator_args[@]}"
+    fi
 }
 
 run_channel_policy_preflight
