@@ -9,6 +9,9 @@ SCRIPT="$ROOT_DIR/host_vm_policy_approval_check.py"
 SERVICE="$ROOT_DIR/host_vm_policy_approval_check.service"
 TIMER="$ROOT_DIR/host_vm_policy_approval_check.timer"
 DOC="$ROOT_DIR/docs/host_vm_policy_approval_check.md"
+BUILD="$ROOT_DIR/build_custom_iso.sh"
+FIRSTBOOT="$ROOT_DIR/firstboot.sh"
+SMOKE="$ROOT_DIR/vm_smoke_check.sh"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
@@ -52,6 +55,28 @@ if ! grep -q 'Persistent=true' "$TIMER"; then
 fi
 if ! grep -q 'approval_valid' "$DOC" || ! grep -q 'approval_rejected' "$DOC"; then
     echo "documentation must describe approval decisions" >&2
+    exit 1
+fi
+
+for token in \
+    'host_vm_policy_approval_check.py' \
+    'host_vm_policy_approval_check.service' \
+    'host_vm_policy_approval_check.timer'; do
+    if ! grep -q "\"$token\"" "$BUILD"; then
+        echo "build_custom_iso.sh must package $token" >&2
+        exit 1
+    fi
+done
+if ! grep -q 'host_vm_policy_approval_check.timer' "$FIRSTBOOT"; then
+    echo "firstboot.sh must enable approval checker timer" >&2
+    exit 1
+fi
+if ! grep -q 'host_vm_policy_approval_check.py --write-template' "$FIRSTBOOT"; then
+    echo "firstboot.sh must write denied-by-default approval template" >&2
+    exit 1
+fi
+if [[ -f "$SMOKE" ]] && ! grep -q 'host_vm_policy_approval_check' "$SMOKE"; then
+    echo "vm_smoke_check.sh should validate approval-check artifacts" >&2
     exit 1
 fi
 
