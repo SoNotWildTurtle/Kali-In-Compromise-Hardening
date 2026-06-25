@@ -1,0 +1,23 @@
+[Unit]
+Description=Create host/VM hardening policy attestation snapshot
+Documentation=man:systemd.service(5)
+After=host_vm_comm_guard.service nn_ids_model_audit.service nn_ids_audit_gate.service
+Wants=host_vm_comm_guard.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/host_vm_policy_attest.py
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/host_vm_comm_guard /var/log /etc/host_vm_comm_guard
+ReadOnlyPaths=/etc/host_vm_comm_guard.conf /etc/nftables.d /var/lib/nn_ids
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
