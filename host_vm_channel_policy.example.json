@@ -1,0 +1,19 @@
+{
+  "protocol": "ssh",
+  "direction": "vm-to-host",
+  "hypervisor": "virtualbox",
+  "management_target": "192.168.56.1",
+  "allowed_ports": [22],
+  "ssh_private_key": "~/.ssh/id_rsa_kali_windows",
+  "pinned_known_hosts": "~/.ssh/known_hosts_kali_host",
+  "require_host_key_pinning": true,
+  "allow_password_authentication": false,
+  "require_transcript_logging": true,
+  "require_time_sync": true,
+  "allow_clipboard_sharing": false,
+  "allow_shared_folders": false,
+  "max_session_minutes": 30,
+  "break_glass": {
+    "documented_procedure": "Temporarily enable a manual console-only maintenance window, capture transcript logs, then restore this policy and rerun validation before automation resumes."
+  }
+}
