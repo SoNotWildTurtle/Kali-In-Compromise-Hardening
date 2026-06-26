@@ -126,6 +126,12 @@ fi
 if systemctl list-unit-files | grep -q '^nn_ids_healthcheck.timer'; then
     systemctl start nn_ids_healthcheck.timer
 fi
+if systemctl list-unit-files | grep -q '^nn_ids_health_evidence.timer'; then
+    systemctl enable --now nn_ids_health_evidence.timer || true
+fi
+if [ -x /usr/local/bin/nn_ids_health_evidence.py ]; then
+    /usr/local/bin/nn_ids_health_evidence.py --output /var/log/nn_ids_health_evidence.firstboot.json >/var/log/nn_ids_health_evidence.firstboot.log 2>&1 || true
+fi
 if systemctl list-unit-files | grep -q '^nn_ids_snapshot.timer'; then
     systemctl start nn_ids_snapshot.timer
 fi

@@ -1,0 +1,27 @@
+[Unit]
+Description=Emit passive NN IDS health evidence JSON
+Documentation=file:/usr/local/share/doc/NN_IDS_HEALTH_EVIDENCE.md
+After=nn_ids_healthcheck.service
+Wants=nn_ids_healthcheck.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nn_ids_health_evidence.py --output /var/log/nn_ids_health_evidence.json
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/log
+ReadOnlyPaths=/opt/nnids
+CapabilityBoundingSet=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+PrivateDevices=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

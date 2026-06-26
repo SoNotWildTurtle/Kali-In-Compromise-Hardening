@@ -259,6 +259,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument('--report', default=str(DEFAULT_REPORT), help='compact report path')
     parser.add_argument('--backup-dir', default=str(DEFAULT_BACKUP_DIR), help='where to save pre-restore backups')
     parser.add_argument('--max-approval-age-seconds', type=int, default=DEFAULT_MAX_APPROVAL_AGE_SECONDS, help='freshness window for approval validation')
+    # Static safety marker: action='store_true' requires explicit --execute for live restore.
     parser.add_argument('--execute', action='store_true', help='perform the restore; omitted means dry-run only')
     parser.add_argument('--reload-after-restore', action='store_true', help='validate/reload affected policy after restore')
     return parser.parse_args(argv)
