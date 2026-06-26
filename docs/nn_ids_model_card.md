@@ -33,6 +33,17 @@ python3 nn_ids_model_card.py \
   --require-pass
 ```
 
+Require the aggregate evidence to be fresh enough for release review:
+
+```bash
+python3 nn_ids_model_card.py \
+  --max-artifact-age-minutes 120 \
+  --output /var/log/nn_ids_model_card.json \
+  --require-pass
+```
+
+When the freshness window is enabled, stale artifacts or artifacts without parseable `generated_at` timestamps become explicit `freshness.*` blockers. Missing inputs still appear as missing evidence blockers rather than hidden freshness passes.
+
 ## Output contract
 
 The JSON output uses `component: nn_ids_model_card` and `schema_version: 1`. It records:
@@ -41,10 +52,11 @@ The JSON output uses `component: nn_ids_model_card` and `schema_version: 1`. It 
 - aggregate health status and safe metric values;
 - aggregate drift status plus failing/warning feature names;
 - release receipt decision;
+- optional artifact freshness status, age, and freshness policy;
 - blockers and operator actions;
 - privacy and rollback notes.
 
-`--require-pass` exits non-zero unless all required aggregate evidence is present and passing and the release receipt is approved.
+`--require-pass` exits non-zero unless all required aggregate evidence is present and passing, the release receipt is approved, and every artifact passes freshness checks when `--max-artifact-age-minutes` is set.
 
 ## Threat-model rationale
 
@@ -56,12 +68,14 @@ This is a defensive analytical control only. It does not claim that model output
 
 The tool is read-only and uses only the Python standard library. It writes either JSON or Markdown to the requested output path and does not open network sockets, run subprocesses, restart services, alter firewall rules, mutate model files, change datasets, or change host/VM configuration.
 
+The freshness gate is opt-in and backward compatible. Existing invocations keep the previous behavior unless `--max-artifact-age-minutes` is provided.
+
 ## Rollback
 
-Stop invoking `nn_ids_model_card.py` and continue reviewing the existing feature schema, health evidence, drift evidence, posture checklist, and release receipt artifacts directly. No deployed control needs to be disabled because the model-card generator is passive.
+Stop invoking `nn_ids_model_card.py` with `--max-artifact-age-minutes` to disable freshness enforcement while preserving the model-card generator. To fully roll back, stop invoking `nn_ids_model_card.py` and continue reviewing the existing feature schema, health evidence, drift evidence, posture checklist, and release receipt artifacts directly. No deployed control needs to be disabled because the model-card generator is passive.
 
 ## Follow-up work
 
-- Package the model card into firstboot/release-gate workflows once CI validates the standalone contract.
+- Package the model card freshness gate into firstboot/release-gate workflows once CI validates the standalone contract.
 - Add dashboard links that render the Markdown card without exposing sensitive telemetry.
 - Include signed artifact references when the suite gains an attestation store.
