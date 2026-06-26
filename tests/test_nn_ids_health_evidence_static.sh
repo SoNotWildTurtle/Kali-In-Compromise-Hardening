@@ -11,7 +11,7 @@ python3 -m py_compile "${SCRIPT}"
 grep -q "never opens network sockets" "${SCRIPT}"
 grep -q "never executes system commands" "${SCRIPT}"
 grep -q "hardening_posture_summary.py" "${SCRIPT}"
-grep -q "--require-pass" "${SCRIPT}"
+grep -q -- "--require-pass" "${SCRIPT}"
 
 MODEL="${TMP_DIR}/ids_model.pkl"
 TRAIN_LOG="${TMP_DIR}/nn_ids_train.log"
