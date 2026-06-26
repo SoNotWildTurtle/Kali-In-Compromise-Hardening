@@ -117,6 +117,7 @@ ids_modules=(
     "nn_ids_setup.py"
     "setup_nn_ids.sh"
     "setup_nn_ids.service"
+    "nn_ids_feature_schema.py"
     "nn_os_train.py"
     "nn_ids_service.py"
     "nn_ids.service"

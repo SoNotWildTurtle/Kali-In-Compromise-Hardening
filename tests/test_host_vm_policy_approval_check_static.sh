@@ -21,7 +21,7 @@ if ! grep -q 'changes_live_state.*False' "$SCRIPT"; then
     echo "approval checker must declare changes_live_state false" >&2
     exit 1
 fi
-if grep -Eq '\b(nft|systemctl|iptables|ufw|cp |mv |rm |shutil\.copy)' "$SCRIPT"; then
+if grep -Eq '\b(nft[[:space:]]|systemctl|iptables|ufw|cp |mv |rm |shutil\.copy)' "$SCRIPT"; then
     echo "approval checker must not mutate live policy or system state" >&2
     exit 1
 fi

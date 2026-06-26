@@ -94,7 +94,7 @@ import sys
 source, target = sys.argv[1:]
 lines = open(source, encoding='utf-8').read().splitlines()
 entry = json.loads(lines[1])
-entry['decision'] = 'restore_executed'
+entry['decision'] = 'review_state_changed_after_hash'
 lines[1] = json.dumps(entry, sort_keys=True)
 open(target, 'w', encoding='utf-8').write('\n'.join(lines) + '\n')
 PY
