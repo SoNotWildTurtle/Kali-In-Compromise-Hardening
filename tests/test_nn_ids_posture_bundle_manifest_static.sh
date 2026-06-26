@@ -56,8 +56,10 @@ assert manifest["schema_version"] == 1
 assert manifest["status"] == "warn"
 assert manifest["summary"]["present_artifacts"] == 3
 assert manifest["summary"]["missing_artifacts"] == []
+assert manifest["summary"]["stale_artifacts"] == []
 assert manifest["summary"]["warning_controls"] == ["nn_ids.drift.ttl"]
 assert manifest["release_gate"]["promotion_warnings"] == ["nn_ids.drift.ttl"]
+assert manifest["release_gate"]["freshness_policy"]["enforced"] is False
 assert "packets" in manifest["privacy_note"]
 assert "Delete the generated manifest" in manifest["rollback"]
 assert all(entry["sha256"] for entry in manifest["artifacts"])
@@ -71,7 +73,8 @@ python3 "${SCRIPT}" \
   --output "${TMP_DIR}/handoff.md"
 
 grep -q '^# NN IDS posture bundle handoff' "${TMP_DIR}/handoff.md"
-grep -q '| health_evidence | `pass` | `yes` | `nn_ids` |' "${TMP_DIR}/handoff.md"
+grep -q 'Freshness window: `not enforced`' "${TMP_DIR}/handoff.md"
+grep -q '| health_evidence | `pass` | `not_enforced` |' "${TMP_DIR}/handoff.md"
 grep -q '`nn_ids.drift.ttl`' "${TMP_DIR}/handoff.md"
 grep -q 'Privacy: The manifest does not embed packets' "${TMP_DIR}/handoff.md"
 grep -q 'Rollback: Delete the generated manifest' "${TMP_DIR}/handoff.md"
