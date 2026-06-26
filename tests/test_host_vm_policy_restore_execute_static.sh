@@ -13,7 +13,7 @@ trap 'rm -rf "$TMPDIR"' EXIT
 
 python3 -m py_compile "$SCRIPT"
 
-if ! grep -q "action='store_true'.*execute" "$SCRIPT"; then
+if ! grep -q -- "--execute" "$SCRIPT" || ! grep -q "action='store_true'" "$SCRIPT"; then
     echo "executor must require explicit --execute" >&2
     exit 1
 fi
