@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -66,7 +65,12 @@ def _collect_controls(payload: Mapping[str, Any] | None, key: str) -> list[str]:
     return sorted({str(item) for item in _as_list(payload.get(key))})
 
 
-def _artifact_entry(name: str, path: Path, payload: Mapping[str, Any] | None, error: str | None) -> dict[str, Any]:
+def _artifact_entry(
+    name: str,
+    path: Path,
+    payload: Mapping[str, Any] | None,
+    error: str | None,
+) -> dict[str, Any]:
     exists = path.exists()
     return {
         "name": name,
@@ -110,7 +114,8 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
         "promotion_blockers": sorted(failing_controls),
         "promotion_warnings": sorted(warning_controls),
         "message": (
-            "Promotion is blocked until all required NN IDS evidence artifacts exist and report pass."
+            "Promotion is blocked until all required NN IDS evidence artifacts "
+            "exist and report pass."
             if status == "fail"
             else "NN IDS posture evidence is available for release review."
         ),
@@ -122,7 +127,10 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
         "generated_at": utc_now(),
         "status": status,
         "ok": status == "pass",
-        "message": "Posture bundle manifest is passive and privacy-safe; it records file hashes and aggregate statuses only.",
+        "message": (
+            "Posture bundle manifest is passive and privacy-safe; it records "
+            "file hashes and aggregate statuses only."
+        ),
         "artifacts": artifacts,
         "summary": {
             "health_status": artifacts[0]["status"],
@@ -135,18 +143,46 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
             "warning_controls": sorted(warning_controls),
         },
         "release_gate": release_gate,
-        "privacy_note": "The manifest does not embed packets, payloads, raw captures, credentials, hostnames, usernames, or secrets.",
-        "rollback": "Delete the generated manifest and continue consuming the individual NN IDS health, drift, and triage evidence files.",
+        "privacy_note": (
+            "The manifest does not embed packets, payloads, raw captures, "
+            "credentials, hostnames, usernames, or secrets."
+        ),
+        "rollback": (
+            "Delete the generated manifest and continue consuming the individual "
+            "NN IDS health, drift, and triage evidence files."
+        ),
     }
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Build a passive NN IDS posture bundle manifest.")
-    parser.add_argument("--health-evidence", default=str(DEFAULT_HEALTH_EVIDENCE), help="JSON from nn_ids_health_evidence.py.")
-    parser.add_argument("--drift-evidence", default=str(DEFAULT_DRIFT_EVIDENCE), help="JSON from nn_ids_drift_evidence.py.")
-    parser.add_argument("--drift-triage", default=str(DEFAULT_DRIFT_TRIAGE), help="JSON from nn_ids_drift_triage.py --format json.")
-    parser.add_argument("--output", default=str(DEFAULT_OUTPUT), help="Path to write the manifest JSON; use '-' for stdout.")
-    parser.add_argument("--require-pass", action="store_true", help="Exit non-zero unless every required artifact exists and passes.")
+    parser = argparse.ArgumentParser(
+        description="Build a passive NN IDS posture bundle manifest."
+    )
+    parser.add_argument(
+        "--health-evidence",
+        default=str(DEFAULT_HEALTH_EVIDENCE),
+        help="JSON from nn_ids_health_evidence.py.",
+    )
+    parser.add_argument(
+        "--drift-evidence",
+        default=str(DEFAULT_DRIFT_EVIDENCE),
+        help="JSON from nn_ids_drift_evidence.py.",
+    )
+    parser.add_argument(
+        "--drift-triage",
+        default=str(DEFAULT_DRIFT_TRIAGE),
+        help="JSON from nn_ids_drift_triage.py --format json.",
+    )
+    parser.add_argument(
+        "--output",
+        default=str(DEFAULT_OUTPUT),
+        help="Path to write the manifest JSON; use '-' for stdout.",
+    )
+    parser.add_argument(
+        "--require-pass",
+        action="store_true",
+        help="Exit non-zero unless every required artifact exists and passes.",
+    )
     return parser
 
 
