@@ -28,7 +28,9 @@ import sys
 path = sys.argv[1]
 
 def canonical(data):
-    return json.dumps(data, sort_keys=True, separators=(',', ':'))
+    unsigned = dict(data)
+    unsigned.pop('event_sha256', None)
+    return json.dumps(unsigned, sort_keys=True, separators=(',', ':'))
 
 def digest(data):
     return hashlib.sha256(canonical(data).encode()).hexdigest()
@@ -92,7 +94,7 @@ import sys
 source, target = sys.argv[1:]
 lines = open(source, encoding='utf-8').read().splitlines()
 entry = json.loads(lines[1])
-entry['decision'] = 'restore_executed'
+entry['decision'] = 'review_state_changed_after_hash'
 lines[1] = json.dumps(entry, sort_keys=True)
 open(target, 'w', encoding='utf-8').write('\n'.join(lines) + '\n')
 PY
