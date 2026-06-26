@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added `nn_ids_drift_triage.py`, a read-only renderer that converts passive NN IDS drift evidence into privacy-safe Markdown or JSON operator handoff artifacts.
+- Added `docs/nn_ids_drift_triage.md` with usage, release-gate behavior, threat-model rationale, compatibility notes, rollback guidance, and follow-up work.
+- Added tests covering drift triage summary counts, recommended actions, Markdown rendering, privacy notes, rollback notes, and `--require-pass` exit behavior.
 - Added `nn_ids_drift_evidence.py`, a passive JSON evidence emitter that compares baseline and current NN IDS feature statistics for PSI, mean-shift, and missing-rate drift before model or release promotion.
 - Added `docs/nn_ids_drift_evidence.md` with input schema, examples, thresholds, rollback notes, and follow-up work for posture-summary and dashboard integration.
 - Added `tests/test_nn_ids_drift_evidence_static.sh` covering pass/fail drift evidence, `--require-pass`, JSON output, canonical four-feature coverage, and compile validation.
@@ -15,6 +18,7 @@
 
 ### Security
 
+- The NN IDS drift triage renderer is read-only and privacy-safe: it consumes aggregate drift evidence and does not include packets, payloads, credentials, host secrets, or raw captures in generated handoffs.
 - The NN IDS drift evidence emitter is read-only: it does not open network sockets, execute commands, restart services, change firewall rules, or modify host/VM state.
 - Drift failures are treated as review gates for analytical trust and model promotion, not as certain indications of malicious traffic or operational targeting.
 - The NN IDS evidence emitter is read-only: it does not open network sockets, execute commands, restart services, change firewall rules, or modify host/VM state.
