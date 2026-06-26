@@ -60,6 +60,32 @@ python3 hardening_posture_summary.py \
   --require-pass
 ```
 
+## Deployment integration
+
+The live ISO packaging flow now includes these additive files:
+
+- `nn_ids_health_evidence.py`
+- `nn_ids_health_evidence.service`
+- `nn_ids_health_evidence.timer`
+
+On first boot, `firstboot.sh` enables `nn_ids_health_evidence.timer` when the unit is present and writes an immediate firstboot artifact to `/var/log/nn_ids_health_evidence.firstboot.json`. The timer then emits `/var/log/nn_ids_health_evidence.json` every 30 minutes after boot.
+
+The service intentionally omits `--require-pass` so the timer keeps publishing degraded evidence instead of hiding health data behind a failed unit. Release gates and operator workflows should call the script or the aggregate posture summary with `--require-pass` when fail-closed behavior is required.
+
+### Systemd hardening
+
+`nn_ids_health_evidence.service` is a oneshot unit with baseline hardening controls:
+
+- `NoNewPrivileges=true`
+- `PrivateTmp=true`
+- `ProtectSystem=full`
+- `ProtectHome=true`
+- empty `CapabilityBoundingSet`
+- `ReadOnlyPaths=/opt/nnids`
+- `ReadWritePaths=/var/log`
+
+These settings keep the emitter passive while allowing it to read IDS artifacts and write only the evidence JSON/log outputs needed by local posture aggregation.
+
 ## Schema
 
 The JSON output follows the schema expected by `hardening_posture_summary.py`:
@@ -85,10 +111,10 @@ Recent zero-trust guidance and 2025 workload-identity research emphasize explici
 
 ## Compatibility and rollback
 
-This is an additive helper. Existing IDS training, retraining, service supervision, resource monitoring, and snapshot workflows are not changed. To roll back, remove `nn_ids_health_evidence.py`, `tests/test_nn_ids_health_evidence_static.sh`, and this document.
+This is an additive helper. Existing IDS training, retraining, service supervision, resource monitoring, and snapshot workflows are not changed. To roll back, remove `nn_ids_health_evidence.py`, `nn_ids_health_evidence.service`, `nn_ids_health_evidence.timer`, `tests/test_nn_ids_health_evidence_static.sh`, the `build_custom_iso.sh` packaging entries, the `firstboot.sh` timer wiring, and this document.
 
 ## Follow-up work
 
-- Add an optional systemd timer that writes `/var/log/nn_ids_health_evidence.json` after each healthcheck run.
 - Add model-drift statistics once the retraining pipeline stores a stable validation baseline.
 - Add first-class health emitters for resource pressure, snapshot freshness, restore readiness, time sync, and port exposure.
+- Feed `/var/log/nn_ids_health_evidence.json` into the aggregate posture summary during safe release gates once PR #40 is merged into `main`.
