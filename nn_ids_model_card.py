@@ -76,6 +76,60 @@ def _status(payload: Mapping[str, Any] | None) -> str:
     return "unknown"
 
 
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    normalized = value.strip()
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _artifact_age_minutes(generated_at: Any, now: datetime) -> float | None:
+    parsed = _parse_timestamp(generated_at)
+    if parsed is None:
+        return None
+    return max(0.0, (now - parsed).total_seconds() / 60)
+
+
+def _freshness_entry(
+    name: str,
+    path: Path,
+    payload: Mapping[str, Any] | None,
+    max_artifact_age_minutes: float | None,
+    now: datetime,
+) -> tuple[dict[str, Any], str | None]:
+    entry = {
+        "name": name,
+        "path": str(path),
+        "generated_at": payload.get("generated_at") if payload else None,
+        "artifact_age_minutes": None,
+        "freshness_status": "not_enforced",
+        "max_artifact_age_minutes": max_artifact_age_minutes,
+    }
+    if max_artifact_age_minutes is None:
+        return entry, None
+    if not payload:
+        entry["freshness_status"] = "missing"
+        return entry, None
+    age_minutes = _artifact_age_minutes(entry["generated_at"], now)
+    entry["artifact_age_minutes"] = round(age_minutes, 2) if age_minutes is not None else None
+    if age_minutes is None:
+        entry["freshness_status"] = "fail"
+        return entry, f"freshness.{name}.missing_generated_at"
+    if age_minutes > max_artifact_age_minutes:
+        entry["freshness_status"] = "fail"
+        return entry, f"freshness.{name}.stale"
+    entry["freshness_status"] = "pass"
+    return entry, None
+
+
 def _drift_summary(drift: Mapping[str, Any] | None) -> dict[str, Any]:
     if not drift:
         return {"status": "missing", "failing_features": [], "warning_features": []}
@@ -113,6 +167,9 @@ def build_model_card(
     receipt: Mapping[str, Any] | None,
     errors: list[str],
     generated_at: str | None = None,
+    artifact_paths: Mapping[str, Path] | None = None,
+    max_artifact_age_minutes: float | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     feature_order = _feature_order(schema)
     health_status = _status(health)
@@ -120,6 +177,30 @@ def build_model_card(
     drift_summary = _drift_summary(drift)
     release_decision = _release_decision(receipt)
     blockers = list(errors)
+    generated_now = now or datetime.now(timezone.utc)
+    paths = artifact_paths or {
+        "feature_schema": DEFAULT_SCHEMA,
+        "health_evidence": DEFAULT_HEALTH,
+        "drift_evidence": DEFAULT_DRIFT,
+        "release_receipt": DEFAULT_RECEIPT,
+    }
+    freshness_entries: list[dict[str, Any]] = []
+    for name, payload in (
+        ("feature_schema", schema),
+        ("health_evidence", health),
+        ("drift_evidence", drift),
+        ("release_receipt", receipt),
+    ):
+        entry, freshness_error = _freshness_entry(
+            name,
+            paths.get(name, Path(name)),
+            payload,
+            max_artifact_age_minutes,
+            generated_now,
+        )
+        freshness_entries.append(entry)
+        if freshness_error:
+            blockers.append(freshness_error)
 
     if not feature_order:
         blockers.append("feature_schema.missing_or_invalid")
@@ -134,7 +215,7 @@ def build_model_card(
     return {
         "component": "nn_ids_model_card",
         "schema_version": 1,
-        "generated_at": generated_at or utc_now(),
+        "generated_at": generated_at or generated_now.isoformat(),
         "ok": ok,
         "status": "pass" if ok else "fail",
         "model_scope": {
@@ -155,12 +236,18 @@ def build_model_card(
             "decision": release_decision,
             "source_status": _status(receipt),
         },
+        "freshness": {
+            "enforced": max_artifact_age_minutes is not None,
+            "max_artifact_age_minutes": max_artifact_age_minutes,
+            "artifacts": freshness_entries,
+        },
         "blockers": sorted(set(blockers)),
         "operator_actions": operator_actions(blockers),
         "privacy_note": (
             "This model card contains only aggregate statuses, feature names, metric keys, "
-            "and release decisions. It excludes raw packets, payloads, captures, credentials, "
-            "hostnames, usernames, secrets, model binaries, raw IDS logs, and host/VM state."
+            "artifact paths, artifact ages, and release decisions. It excludes raw packets, "
+            "payloads, captures, credentials, hostnames, usernames, secrets, model binaries, "
+            "raw IDS logs, and host/VM state."
         ),
         "rollback": (
             "Stop generating the model card and continue reviewing the existing schema, health, "
@@ -181,6 +268,8 @@ def operator_actions(blockers: list[str]) -> list[str]:
             actions.append("Regenerate drift evidence and review failing or missing drift controls before model promotion.")
         elif blocker.startswith("release_receipt"):
             actions.append("Regenerate the posture release checklist and receipt after resolving blockers.")
+        elif blocker.startswith("freshness."):
+            actions.append("Regenerate stale or timestamp-missing NN IDS evidence before model-card release approval.")
         elif blocker.startswith("missing:") or blocker.startswith("unreadable:"):
             actions.append(f"Review evidence artifact problem: {blocker}")
         else:
@@ -189,11 +278,15 @@ def operator_actions(blockers: list[str]) -> list[str]:
 
 
 def render_markdown(card: Mapping[str, Any]) -> str:
+    freshness = card.get("freshness") if isinstance(card.get("freshness"), dict) else {}
+    freshness_window = freshness.get("max_artifact_age_minutes")
+    freshness_text = f"`{freshness_window}` minutes" if freshness.get("enforced") else "`not enforced`"
     lines = [
         "# NN IDS model card",
         "",
         f"- Status: `{str(card.get('status') or 'unknown').upper()}`",
         f"- Release ready: `{'yes' if card.get('ok') else 'no'}`",
+        f"- Freshness window: {freshness_text}",
         f"- Generated at: `{card.get('generated_at') or 'unknown'}`",
         f"- Feature count: `{card.get('feature_contract', {}).get('feature_count', 0)}`",
         f"- Health status: `{card.get('health', {}).get('status', 'unknown')}`",
@@ -205,6 +298,27 @@ def render_markdown(card: Mapping[str, Any]) -> str:
     ]
     feature_order = _as_list(card.get("feature_contract", {}).get("feature_order"))
     lines.append("- " + ", ".join(f"`{name}`" for name in feature_order) if feature_order else "- Missing feature contract.")
+    lines.extend(["", "## Artifact freshness", ""])
+    artifacts = _as_list(freshness.get("artifacts"))
+    if artifacts:
+        lines.extend([
+            "| Artifact | Freshness | Age minutes | Generated |",
+            "| --- | --- | ---: | --- |",
+        ])
+        for artifact in artifacts:
+            if not isinstance(artifact, dict):
+                continue
+            age = artifact.get("artifact_age_minutes")
+            lines.append(
+                "| {name} | `{status}` | `{age}` | `{generated}` |".format(
+                    name=artifact.get("name", "unknown"),
+                    status=artifact.get("freshness_status", "unknown"),
+                    age=age if age is not None else "n/a",
+                    generated=artifact.get("generated_at") or "n/a",
+                )
+            )
+    else:
+        lines.append("- No artifact freshness metadata was generated.")
     lines.extend(["", "## Blockers", ""])
     blockers = _as_list(card.get("blockers"))
     if blockers:
@@ -238,6 +352,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--receipt", default=str(DEFAULT_RECEIPT), help="Path to posture release receipt JSON.")
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT), help="Output path, or '-' for stdout.")
     parser.add_argument("--format", choices=("json", "markdown"), default="json", help="Output format.")
+    parser.add_argument(
+        "--max-artifact-age-minutes",
+        type=float,
+        default=None,
+        help=(
+            "Optional release-gate freshness window. When set, evidence artifacts "
+            "without parseable generated_at timestamps or older than this many "
+            "minutes fail the model-card gate."
+        ),
+    )
     parser.add_argument("--require-pass", action="store_true", help="Exit non-zero unless the model card is release-ready.")
     return parser
 
@@ -245,20 +369,37 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     errors: list[str] = []
-    schema, error = _load_optional_json(Path(args.schema))
+    schema_path = Path(args.schema)
+    health_path = Path(args.health)
+    drift_path = Path(args.drift)
+    receipt_path = Path(args.receipt)
+    schema, error = _load_optional_json(schema_path)
     if error:
         errors.append(error)
-    health, error = _load_optional_json(Path(args.health))
+    health, error = _load_optional_json(health_path)
     if error:
         errors.append(error)
-    drift, error = _load_optional_json(Path(args.drift))
+    drift, error = _load_optional_json(drift_path)
     if error:
         errors.append(error)
-    receipt, error = _load_optional_json(Path(args.receipt))
+    receipt, error = _load_optional_json(receipt_path)
     if error:
         errors.append(error)
 
-    card = build_model_card(schema, health, drift, receipt, errors)
+    card = build_model_card(
+        schema,
+        health,
+        drift,
+        receipt,
+        errors,
+        artifact_paths={
+            "feature_schema": schema_path,
+            "health_evidence": health_path,
+            "drift_evidence": drift_path,
+            "release_receipt": receipt_path,
+        },
+        max_artifact_age_minutes=args.max_artifact_age_minutes,
+    )
     rendered = json.dumps(card, indent=2, sort_keys=True) if args.format == "json" else render_markdown(card)
     if args.output == "-":
         print(rendered)
