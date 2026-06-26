@@ -11,7 +11,23 @@ trap 'rm -rf "$TMPDIR"' EXIT
 
 python3 -m py_compile "$SCRIPT"
 
-grep -q "changes_live_state.*False" "$SCRIPT"
+python3 - "$SCRIPT" <<'PY'
+import ast
+import sys
+from pathlib import Path
+
+module = ast.parse(Path(sys.argv[1]).read_text(encoding="utf-8"))
+for node in ast.walk(module):
+    if isinstance(node, ast.Dict):
+        keys = [item.value for item in node.keys if isinstance(item, ast.Constant)]
+        values = node.values
+        if "changes_live_state" in keys:
+            value = values[keys.index("changes_live_state")]
+            assert isinstance(value, ast.Constant) and value.value is False
+            break
+else:
+    raise AssertionError("changes_live_state must be declared as a static False value")
+PY
 grep -q "host_vm_policy_restore_execute.timer" "$SCRIPT"
 grep -q "ProtectSystem=strict" "$SCRIPT"
 
@@ -35,7 +51,7 @@ EOF_SMOKE
 cat > "$TMPDIR/fixture/tests/run_static_security_checks.sh" <<'EOF_STATIC'
 host_vm_policy_restore_execute.py
 host_vm_policy_restore_execute.service
-host_vm_policy_restore_execute_static.sh
+test_*_static.sh
 EOF_STATIC
 cat > "$TMPDIR/fixture/host_vm_policy_restore_execute.service" <<'EOF_SERVICE'
 ConditionPathExists=/var/lib/host_vm_comm_guard/policy_restore_approval_check.json
