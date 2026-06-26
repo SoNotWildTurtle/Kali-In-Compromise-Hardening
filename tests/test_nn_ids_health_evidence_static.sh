@@ -9,10 +9,24 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 python3 -m py_compile "${SCRIPT}"
 python3 "${SCRIPT}" --help >/dev/null
 
-grep -q "never opens network sockets" "${SCRIPT}"
-grep -q "never executes system commands" "${SCRIPT}"
-grep -q "hardening_posture_summary.py" "${SCRIPT}"
-grep -q -- "--require-pass" "${SCRIPT}"
+# Normalize source whitespace before checking the documented passive-safety
+# contract. This avoids brittle failures when Python formatters wrap a
+# docstring across lines without changing its meaning.
+python3 - "${SCRIPT}" <<'PY'
+from pathlib import Path
+import sys
+
+source = " ".join(Path(sys.argv[1]).read_text(encoding="utf-8").split())
+required_phrases = (
+    "never opens network sockets",
+    "never executes system commands",
+    "hardening_posture_summary.py",
+    "--require-pass",
+)
+missing = [phrase for phrase in required_phrases if phrase not in source]
+if missing:
+    raise SystemExit(f"missing passive-safety contract phrase(s): {', '.join(missing)}")
+PY
 
 MODEL="${TMP_DIR}/ids_model.pkl"
 TRAIN_LOG="${TMP_DIR}/nn_ids_train.log"
@@ -36,7 +50,10 @@ python3 "${SCRIPT}" \
 python3 - "${OUTPUT_JSON}" <<'PY'
 import json
 import sys
-payload = json.load(open(sys.argv[1], encoding="utf-8"))
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    payload = json.load(handle)
+
 assert payload["component"] == "nn_ids"
 assert payload["status"] == "pass"
 assert payload["ok"] is True
