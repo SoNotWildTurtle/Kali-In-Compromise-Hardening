@@ -63,17 +63,30 @@ assert "Delete the generated manifest" in manifest["rollback"]
 assert all(entry["sha256"] for entry in manifest["artifacts"])
 PY
 
+python3 "${SCRIPT}" \
+  --health-evidence "${TMP_DIR}/health.json" \
+  --drift-evidence "${TMP_DIR}/drift.json" \
+  --drift-triage "${TMP_DIR}/triage.json" \
+  --format markdown \
+  --output "${TMP_DIR}/handoff.md"
+
+grep -q '^# NN IDS posture bundle handoff' "${TMP_DIR}/handoff.md"
+grep -q '| health_evidence | `pass` | `yes` | `nn_ids` |' "${TMP_DIR}/handoff.md"
+grep -q '`nn_ids.drift.ttl`' "${TMP_DIR}/handoff.md"
+grep -q 'Privacy: The manifest does not embed packets' "${TMP_DIR}/handoff.md"
+grep -q 'Rollback: Delete the generated manifest' "${TMP_DIR}/handoff.md"
+
 if python3 "${SCRIPT}" \
   --health-evidence "${TMP_DIR}/health.json" \
   --drift-evidence "${TMP_DIR}/missing.json" \
   --drift-triage "${TMP_DIR}/triage.json" \
   --output - \
-  --require-pass >/tmp/nn_ids_posture_missing.json; then
+  --require-pass >"${TMP_DIR}/nn_ids_posture_missing.json"; then
   echo "expected --require-pass to fail when an artifact is missing" >&2
   exit 1
 fi
 
-python3 - /tmp/nn_ids_posture_missing.json <<'PY'
+python3 - "${TMP_DIR}/nn_ids_posture_missing.json" <<'PY'
 import json
 import sys
 from pathlib import Path
