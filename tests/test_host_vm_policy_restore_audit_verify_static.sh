@@ -28,7 +28,9 @@ import sys
 path = sys.argv[1]
 
 def canonical(data):
-    return json.dumps(data, sort_keys=True, separators=(',', ':'))
+    unsigned = dict(data)
+    unsigned.pop('event_sha256', None)
+    return json.dumps(unsigned, sort_keys=True, separators=(',', ':'))
 
 def digest(data):
     return hashlib.sha256(canonical(data).encode()).hexdigest()
