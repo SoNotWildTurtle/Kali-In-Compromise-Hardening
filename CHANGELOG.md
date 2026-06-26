@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added `nn_ids_model_card.py`, a passive privacy-safe model card generator that combines feature-schema, health, drift, and release-receipt evidence into JSON or Markdown release-review artifacts.
+- Added `tests/test_nn_ids_model_card.py` to cover passing model cards, failed drift/deferred receipt blockers, missing-artifact blockers, Markdown rendering, privacy text, rollback text, and `--require-pass` behavior.
+- Added `docs/nn_ids_model_card.md` with usage, schema contract, threat-model rationale, compatibility notes, rollback guidance, and follow-up work.
 - Added `nn_ids_posture_release_receipt.py`, a passive privacy-safe receipt generator that converts checklist JSON into explicit approved/deferred release, firstboot, or recovery handoff artifacts with action items and rollback guidance.
 - Added `tests/test_nn_ids_posture_release_receipt.py` to cover approved receipts, deferred receipts, Markdown rendering, `--require-ready`, inferred failed items, privacy text, and rollback contracts.
 - Added `docs/nn_ids_posture_release_receipt.md` with usage, schema contract, threat-model rationale, compatibility notes, rollback guidance, and follow-up work.
@@ -31,6 +34,8 @@
 
 ### Security
 
+- The NN IDS model card is passive and privacy-safe: it consumes only aggregate schema, health, drift, and release-receipt evidence and does not embed sensitive telemetry, raw packets, captures, credentials, hostnames, usernames, secrets, model binaries, raw IDS logs, or host/VM state.
+- The model card `--require-pass` path exits non-zero when required aggregate evidence is missing, failing, or deferred, making model promotion and release handoff auditable without changing services, timers, firewall rules, model files, datasets, host settings, or VM settings.
 - The posture release receipt is passive and privacy-safe: it consumes only checklist JSON and emits aggregate decisions/action items without embedding sensitive telemetry, credentials, hostnames, usernames, secrets, model files, or raw IDS logs.
 - The receipt `--require-ready` path exits non-zero when the checklist is deferred, giving release gates an auditable stop condition without changing services, firewall rules, model artifacts, datasets, host settings, or VM settings.
 - The posture release checklist is passive and privacy-safe: it consumes only aggregate manifest metadata and emits operator actions without embedding sensitive telemetry, credentials, hostnames, usernames, secrets, or raw IDS logs.
