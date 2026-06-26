@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added optional `--max-artifact-age-minutes` freshness gating to `nn_ids_posture_bundle_manifest.py`, allowing release, firstboot, and recovery workflows to fail stale NN IDS evidence without embedding raw logs or captures.
+- Added `tests/test_nn_ids_posture_bundle_freshness_static.sh` to cover stale artifact blockers, freshness policy output, Markdown freshness reporting, and `--require-pass` behavior.
 - Added Markdown handoff rendering to `nn_ids_posture_bundle_manifest.py` via `--format markdown`, preserving the existing JSON contract while giving operators a privacy-safe review artifact with release-gate status, artifact summaries, blockers, warnings, privacy notes, and rollback guidance.
 - Extended `tests/test_nn_ids_posture_bundle_manifest_static.sh` to cover Markdown output, privacy/rollback text, warning propagation, and the existing missing-artifact release gate path.
 - Added `nn_ids_posture_bundle_manifest.py`, a passive privacy-safe release-gate manifest that aggregates NN IDS health, drift, and triage evidence into one machine-readable posture bundle.
@@ -23,6 +25,7 @@
 
 ### Security
 
+- The posture bundle freshness gate is passive and privacy-safe: it uses only each evidence artifact's aggregate `generated_at` timestamp and never reads raw packets, payloads, captures, credentials, hostnames, usernames, secrets, or raw IDS logs.
 - The Markdown posture bundle handoff is generated from aggregate manifest evidence only; it does not embed raw packets, payloads, captures, credentials, hostnames, usernames, secrets, or raw IDS logs.
 - The NN IDS posture bundle manifest is read-only and privacy-safe: it records only artifact paths, SHA-256 digests, aggregate statuses, and control IDs, without embedding packets, payloads, credentials, hostnames, usernames, raw captures, or secrets.
 - The posture bundle `--require-pass` path exits non-zero when required health, drift, or triage artifacts are missing or failing, making release gates auditable without changing firewall, service, model, dataset, or host/VM state.
