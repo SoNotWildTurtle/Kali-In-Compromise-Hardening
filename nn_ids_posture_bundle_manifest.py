@@ -155,6 +155,78 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def _markdown_list(values: list[Any], empty: str) -> str:
+    if not values:
+        return f"- {empty}"
+    return "\n".join(f"- `{value}`" for value in values)
+
+
+def _short_digest(value: Any) -> str:
+    if not value:
+        return "n/a"
+    return f"`{str(value)[:12]}`"
+
+
+def render_markdown(manifest: Mapping[str, Any]) -> str:
+    """Render a privacy-safe operator handoff report from a posture manifest."""
+    artifacts = _as_list(manifest.get("artifacts"))
+    summary = manifest.get("summary") if isinstance(manifest.get("summary"), dict) else {}
+    release_gate = (
+        manifest.get("release_gate") if isinstance(manifest.get("release_gate"), dict) else {}
+    )
+    status = str(manifest.get("status", "missing")).upper()
+    ok = "yes" if manifest.get("ok") else "no"
+
+    lines = [
+        "# NN IDS posture bundle handoff",
+        "",
+        f"- Status: `{status}`",
+        f"- Release gate ok: `{ok}`",
+        f"- Generated at: `{manifest.get('generated_at', 'unknown')}`",
+        f"- Present artifacts: `{summary.get('present_artifacts', 0)}` / `{summary.get('artifact_count', len(artifacts))}`",
+        "",
+        "## Artifact summary",
+        "",
+        "| Artifact | Status | Present | Component | Generated | SHA-256 |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            continue
+        lines.append(
+            "| {name} | `{status}` | `{present}` | `{component}` | `{generated}` | {sha} |".format(
+                name=artifact.get("name", "unknown"),
+                status=artifact.get("status", "missing"),
+                present="yes" if artifact.get("exists") else "no",
+                component=artifact.get("component") or "n/a",
+                generated=artifact.get("generated_at") or "n/a",
+                sha=_short_digest(artifact.get("sha256")),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Promotion blockers",
+            "",
+            _markdown_list(_as_list(release_gate.get("promotion_blockers")), "None."),
+            "",
+            "## Promotion warnings",
+            "",
+            _markdown_list(_as_list(release_gate.get("promotion_warnings")), "None."),
+            "",
+            "## Operator notes",
+            "",
+            f"- {release_gate.get('message', 'No release-gate message was provided.')}",
+            f"- Privacy: {manifest.get('privacy_note', 'No privacy note was provided.')}",
+            f"- Rollback: {manifest.get('rollback', 'No rollback note was provided.')}",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Build a passive NN IDS posture bundle manifest."
@@ -177,7 +249,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         default=str(DEFAULT_OUTPUT),
-        help="Path to write the manifest JSON; use '-' for stdout.",
+        help="Path to write the manifest; use '-' for stdout.",
+    )
+    parser.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Render machine-readable JSON or a privacy-safe Markdown handoff.",
     )
     parser.add_argument(
         "--require-pass",
@@ -190,7 +268,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     manifest = build_manifest(args)
-    rendered = json.dumps(manifest, indent=2, sort_keys=True)
+    if args.format == "markdown":
+        rendered = render_markdown(manifest)
+    else:
+        rendered = json.dumps(manifest, indent=2, sort_keys=True)
     if args.output == "-":
         print(rendered)
     else:
