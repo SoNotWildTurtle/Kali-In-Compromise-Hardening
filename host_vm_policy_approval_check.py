@@ -180,7 +180,7 @@ def validate_approval(plan: Dict[str, Any], approval: Dict[str, Any], approval_p
         'issues': issues,
         'eligible_actions': restore_actions,
         'changes_live_state': False,
-        'safe_default': 'validation-only; no firewall, nftables, systemd, model, or host state was changed',
+        'safe_default': 'validation-only; no firewall, packet-filter, service-manager, model, or host state was changed',
     }
 
 
