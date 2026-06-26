@@ -1,0 +1,13 @@
+[Unit]
+Description=Run passive NN IDS health evidence emission periodically
+Documentation=file:/usr/local/share/doc/NN_IDS_HEALTH_EVIDENCE.md
+
+[Timer]
+OnBootSec=20min
+OnUnitActiveSec=30min
+AccuracySec=5min
+Persistent=true
+Unit=nn_ids_health_evidence.service
+
+[Install]
+WantedBy=timers.target
