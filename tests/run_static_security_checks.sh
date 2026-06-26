@@ -109,6 +109,7 @@ for token in [
     'host_vm_policy_verify.timer',
     'host_vm_policy_restore_execute.py',
     'host_vm_policy_restore_execute.service',
+    'tests/test_host_vm_policy_restore_execute_static.sh',
     'nn_ids_model_audit.py',
     'nn_ids_model_audit.service',
     'nn_ids_model_audit.timer',
@@ -116,7 +117,10 @@ for token in [
     'nn_ids_audit_gate.service',
     'nn_ids_audit_gate.timer',
 ]:
-    if f'"{token}"' not in build and f"'{token}'" not in build:
+    if token.startswith('tests/'):
+        if not (root / token).exists():
+            errors.append(f'missing critical module test {token}')
+    elif f'"{token}"' not in build and f"'{token}'" not in build:
         errors.append(f'build_custom_iso.sh missing critical module {token}')
 
 # The restore executor must be smoke-check visible but never timer-driven.
