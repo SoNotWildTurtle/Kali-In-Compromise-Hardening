@@ -3,8 +3,8 @@
 
 MINC - Defensive validation only. This utility reads local JSON evidence files
 produced by the NN IDS health, drift, and triage helpers, then emits a compact
-manifest for release gates and operator handoff. It never opens network sockets,
-executes commands, changes firewall state, or modifies host/VM configuration.
+manifest for release gates and operator handoff. It is read-only and does not
+modify services, networking, model artifacts, or host/VM configuration.
 """
 
 from __future__ import annotations
@@ -107,16 +107,17 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
         failing_controls.update(_collect_controls(payload, "failing_controls"))
         warning_controls.update(_collect_controls(payload, "warning_controls"))
 
+    aggregate_status = "fail" if status == "missing" else status
     release_gate = {
-        "status": status,
-        "ok": status == "pass",
+        "status": aggregate_status,
+        "ok": aggregate_status == "pass",
         "required_artifacts": [entry["name"] for entry in artifacts],
         "promotion_blockers": sorted(failing_controls),
         "promotion_warnings": sorted(warning_controls),
         "message": (
             "Promotion is blocked until all required NN IDS evidence artifacts "
             "exist and report pass."
-            if status == "fail"
+            if aggregate_status == "fail"
             else "NN IDS posture evidence is available for release review."
         ),
     }
@@ -125,8 +126,8 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
         "component": "nn_ids_posture_bundle_manifest",
         "schema_version": 1,
         "generated_at": utc_now(),
-        "status": status,
-        "ok": status == "pass",
+        "status": aggregate_status,
+        "ok": aggregate_status == "pass",
         "message": (
             "Posture bundle manifest is passive and privacy-safe; it records "
             "file hashes and aggregate statuses only."
