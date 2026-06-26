@@ -118,7 +118,30 @@ Recommended CI flow:
 3. Run `channel_policy_health_summary.py --require-pass` to gate later host-hardening stages.
 4. Publish the aggregate JSON beside IDS, resource, time-sync, and port-monitor status so reviewers can see whether privileged host/VM automation was allowed or blocked before any remote operation.
 
-### Break-glass override
+### Aggregate posture summary
+
+`hardening_posture_summary.py` provides the next aggregation layer. It reads local JSON health documents from channel-policy summaries, NN IDS checks, resource monitors, time-sync checks, port monitors, snapshot checks, or other defensive modules and emits one overall posture status.
+
+```bash
+python3 hardening_posture_summary.py artifacts/channel-policy/summary.json artifacts/ids-health.json --require-pass
+```
+
+Emit JSON for dashboards or release gates:
+
+```bash
+python3 hardening_posture_summary.py artifacts/**/*.json --json > artifacts/hardening-posture.json
+```
+
+The collector accepts simple component health documents with fields such as `component`, `ok`, `status`, `message`, `failing_controls`, `warning_controls`, or `findings`. A missing or malformed component file returns exit code `2`; a readable but failing or warning component returns non-zero with `--require-pass`. This lets CI distinguish infrastructure problems from a valid defensive finding.
+
+Recommended review flow:
+
+1. Generate raw module evidence, including channel-policy preflight output.
+2. Generate focused summaries such as `channel_policy_health_summary.py --json`.
+3. Feed those summaries and other component health documents into `hardening_posture_summary.py --json`.
+4. Publish `artifacts/hardening-posture.json` with build artifacts so reviewers can see the host/VM management-channel, IDS, resource, time-sync, port, and snapshot posture in one place.
+
+## Break-glass override
 
 A break-glass bypass exists only for console-supervised maintenance:
 
@@ -137,4 +160,4 @@ Use it only when the policy file or validator is unavailable during recovery. Ca
 
 ## Rollback
 
-The validator itself is additive. To roll back only the preflight enforcement, revert the changes to `host_hardening_windows.sh`, `host_hardening_linux.sh`, and `tests/test_host_vm_policy_preflight_static.sh`. To remove the evidence summarizer, remove `channel_policy_health_summary.py`, `tests/test_channel_policy_health_summary_static.sh`, and the evidence health summary section above. To remove the full policy feature, also remove `host_vm_channel_policy.py`, `host_vm_channel_policy.example.json`, `tests/test_host_vm_channel_policy_static.sh`, and this document.
+The validator itself is additive. To roll back only the preflight enforcement, revert the changes to `host_hardening_windows.sh`, `host_hardening_linux.sh`, and `tests/test_host_vm_policy_preflight_static.sh`. To remove the evidence summarizer, remove `channel_policy_health_summary.py`, `tests/test_channel_policy_health_summary_static.sh`, and the evidence health summary section above. To remove the aggregate posture layer, remove `hardening_posture_summary.py`, `tests/test_hardening_posture_summary_static.sh`, and the aggregate posture summary section above. To remove the full policy feature, also remove `host_vm_channel_policy.py`, `host_vm_channel_policy.example.json`, `tests/test_host_vm_channel_policy_static.sh`, and this document.
