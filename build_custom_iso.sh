@@ -93,6 +93,8 @@ core_modules=(
     "ids_menu.sh"
     "host_vm_comm_guard.sh"
     "host_vm_comm_guard.service"
+    "host_vm_channel_policy.py"
+    "host_vm_channel_policy.example.json"
     "host_vm_policy_attest.py"
     "host_vm_policy_attest.service"
     "host_vm_policy_attest.timer"
@@ -218,13 +220,21 @@ fi
 cat > "$INSTALL_DIR/firstboot.service" <<SERVICE
 [Unit]
 Description=First boot hardening
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/firstboot.sh
+ExecStart=/usr/local/bin/$FIRSTBOOT
 RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
 SERVICE
+
+chmod +x "$INSTALL_DIR"/*.sh "$INSTALL_DIR"/*.py 2>/dev/null || true
+
+mkisofs -o "$OUT_ISO" -b isolinux/isolinux.bin -c isolinux/boot.cat \
+    -no-emul-boot -boot-load-size 4 -boot-info-table "$EXTRACT_DIR"
+isohybrid "$OUT_ISO"
+echo "Custom ISO written to $OUT_ISO"
