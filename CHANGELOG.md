@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added opt-in `--max-artifact-age-minutes` freshness gating to `nn_ids_model_card.py`, allowing release, firstboot, and recovery workflows to block stale or untimestamped NN IDS model-card evidence without exposing sensitive telemetry.
+- Added tests covering stale evidence blockers, missing timestamp blockers, Markdown freshness reporting, and privacy-safe operator actions for the NN IDS model card.
+- Updated `docs/nn_ids_model_card.md` with freshness-gate usage, output contract, compatibility notes, rollback guidance, and follow-up work.
 - Added `nn_ids_model_card.py`, a passive privacy-safe model card generator that combines feature-schema, health, drift, and release-receipt evidence into JSON or Markdown release-review artifacts.
 - Added `tests/test_nn_ids_model_card.py` to cover passing model cards, failed drift/deferred receipt blockers, missing-artifact blockers, Markdown rendering, privacy text, rollback text, and `--require-pass` behavior.
 - Added `docs/nn_ids_model_card.md` with usage, schema contract, threat-model rationale, compatibility notes, rollback guidance, and follow-up work.
@@ -34,6 +37,7 @@
 
 ### Security
 
+- The NN IDS model-card freshness gate is passive and privacy-safe: it uses only aggregate `generated_at` timestamps and artifact paths to fail stale or untimestamped release evidence, without reading raw packets, payloads, captures, credentials, hostnames, usernames, secrets, model binaries, raw IDS logs, or host/VM state.
 - The NN IDS model card is passive and privacy-safe: it consumes only aggregate schema, health, drift, and release-receipt evidence and does not embed sensitive telemetry, raw packets, captures, credentials, hostnames, usernames, secrets, model binaries, raw IDS logs, or host/VM state.
 - The model card `--require-pass` path exits non-zero when required aggregate evidence is missing, failing, or deferred, making model promotion and release handoff auditable without changing services, timers, firewall rules, model files, datasets, host settings, or VM settings.
 - The posture release receipt is passive and privacy-safe: it consumes only checklist JSON and emits aggregate decisions/action items without embedding sensitive telemetry, credentials, hostnames, usernames, secrets, model files, or raw IDS logs.
