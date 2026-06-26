@@ -65,14 +65,69 @@ def _collect_controls(payload: Mapping[str, Any] | None, key: str) -> list[str]:
     return sorted({str(item) for item in _as_list(payload.get(key))})
 
 
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    normalized = value.strip()
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _artifact_age_minutes(generated_at: Any, now: datetime) -> float | None:
+    parsed = _parse_timestamp(generated_at)
+    if parsed is None:
+        return None
+    return max(0.0, (now - parsed).total_seconds() / 60)
+
+
+def _apply_freshness_gate(
+    entry: dict[str, Any],
+    max_age_minutes: float | None,
+    now: datetime,
+) -> tuple[str, str | None]:
+    generated_at = entry.get("generated_at")
+    age_minutes = _artifact_age_minutes(generated_at, now)
+    entry["artifact_age_minutes"] = round(age_minutes, 2) if age_minutes is not None else None
+    entry["freshness_status"] = "not_enforced"
+
+    if max_age_minutes is None:
+        return entry["status"], None
+
+    entry["max_artifact_age_minutes"] = max_age_minutes
+    if not entry.get("exists"):
+        entry["freshness_status"] = "missing"
+        return entry["status"], None
+    if age_minutes is None:
+        entry["freshness_status"] = "fail"
+        return "fail", f"{entry['name']} missing parseable generated_at timestamp"
+    if age_minutes > max_age_minutes:
+        entry["freshness_status"] = "fail"
+        return "fail", (
+            f"{entry['name']} stale: {age_minutes:.2f} minutes old exceeds "
+            f"{max_age_minutes:.2f} minute freshness window"
+        )
+
+    entry["freshness_status"] = "pass"
+    return entry["status"], None
+
+
 def _artifact_entry(
     name: str,
     path: Path,
     payload: Mapping[str, Any] | None,
     error: str | None,
-) -> dict[str, Any]:
+    max_age_minutes: float | None,
+    now: datetime,
+) -> tuple[dict[str, Any], str | None]:
     exists = path.exists()
-    return {
+    entry = {
         "name": name,
         "path": str(path),
         "exists": exists,
@@ -83,6 +138,11 @@ def _artifact_entry(
         "ok": bool(payload.get("ok")) if payload else False,
         "error": error,
     }
+    entry["status"], freshness_error = _apply_freshness_gate(entry, max_age_minutes, now)
+    if freshness_error:
+        entry["ok"] = False
+        entry["error"] = freshness_error if not error else f"{error}; {freshness_error}"
+    return entry, freshness_error
 
 
 def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
@@ -92,6 +152,8 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
         ("drift_triage", Path(args.drift_triage)),
     ]
 
+    max_age_minutes = args.max_artifact_age_minutes
+    generated_now = datetime.now(timezone.utc)
     artifacts: list[dict[str, Any]] = []
     failing_controls: set[str] = set()
     warning_controls: set[str] = set()
@@ -99,11 +161,20 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
 
     for name, path in artifact_specs:
         payload, error = _load_json(path)
-        entry = _artifact_entry(name, path, payload, error)
+        entry, freshness_error = _artifact_entry(
+            name=name,
+            path=path,
+            payload=payload,
+            error=error,
+            max_age_minutes=max_age_minutes,
+            now=generated_now,
+        )
         artifacts.append(entry)
         status = _worse(status, entry["status"])
         if error:
             failing_controls.add(f"nn_ids.posture_bundle.{name}.present")
+        if freshness_error:
+            failing_controls.add(f"nn_ids.posture_bundle.{name}.fresh")
         failing_controls.update(_collect_controls(payload, "failing_controls"))
         warning_controls.update(_collect_controls(payload, "warning_controls"))
 
@@ -114,9 +185,13 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
         "required_artifacts": [entry["name"] for entry in artifacts],
         "promotion_blockers": sorted(failing_controls),
         "promotion_warnings": sorted(warning_controls),
+        "freshness_policy": {
+            "enforced": max_age_minutes is not None,
+            "max_artifact_age_minutes": max_age_minutes,
+        },
         "message": (
             "Promotion is blocked until all required NN IDS evidence artifacts "
-            "exist and report pass."
+            "exist, are fresh when a freshness window is enforced, and report pass."
             if aggregate_status == "fail"
             else "NN IDS posture evidence is available for release review."
         ),
@@ -125,12 +200,12 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "component": "nn_ids_posture_bundle_manifest",
         "schema_version": 1,
-        "generated_at": utc_now(),
+        "generated_at": generated_now.isoformat(),
         "status": aggregate_status,
         "ok": aggregate_status == "pass",
         "message": (
             "Posture bundle manifest is passive and privacy-safe; it records "
-            "file hashes and aggregate statuses only."
+            "file hashes, artifact freshness, and aggregate statuses only."
         ),
         "artifacts": artifacts,
         "summary": {
@@ -140,6 +215,9 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
             "artifact_count": len(artifacts),
             "present_artifacts": sum(1 for entry in artifacts if entry["exists"]),
             "missing_artifacts": [entry["name"] for entry in artifacts if not entry["exists"]],
+            "stale_artifacts": [
+                entry["name"] for entry in artifacts if entry.get("freshness_status") == "fail"
+            ],
             "failing_controls": sorted(failing_controls),
             "warning_controls": sorted(warning_controls),
         },
@@ -174,6 +252,17 @@ def render_markdown(manifest: Mapping[str, Any]) -> str:
     release_gate = (
         manifest.get("release_gate") if isinstance(manifest.get("release_gate"), dict) else {}
     )
+    freshness_policy = (
+        release_gate.get("freshness_policy")
+        if isinstance(release_gate.get("freshness_policy"), dict)
+        else {}
+    )
+    freshness_window = freshness_policy.get("max_artifact_age_minutes")
+    freshness_text = (
+        f"`{freshness_window}` minutes"
+        if freshness_policy.get("enforced")
+        else "`not enforced`"
+    )
     status = str(manifest.get("status", "missing")).upper()
     ok = "yes" if manifest.get("ok") else "no"
 
@@ -182,22 +271,26 @@ def render_markdown(manifest: Mapping[str, Any]) -> str:
         "",
         f"- Status: `{status}`",
         f"- Release gate ok: `{ok}`",
+        f"- Freshness window: {freshness_text}",
         f"- Generated at: `{manifest.get('generated_at', 'unknown')}`",
         f"- Present artifacts: `{summary.get('present_artifacts', 0)}` / `{summary.get('artifact_count', len(artifacts))}`",
         "",
         "## Artifact summary",
         "",
-        "| Artifact | Status | Present | Component | Generated | SHA-256 |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| Artifact | Status | Freshness | Age minutes | Present | Component | Generated | SHA-256 |",
+        "| --- | --- | --- | ---: | --- | --- | --- | --- |",
     ]
 
     for artifact in artifacts:
         if not isinstance(artifact, dict):
             continue
+        age = artifact.get("artifact_age_minutes")
         lines.append(
-            "| {name} | `{status}` | `{present}` | `{component}` | `{generated}` | {sha} |".format(
+            "| {name} | `{status}` | `{freshness}` | `{age}` | `{present}` | `{component}` | `{generated}` | {sha} |".format(
                 name=artifact.get("name", "unknown"),
                 status=artifact.get("status", "missing"),
+                freshness=artifact.get("freshness_status", "unknown"),
+                age=age if age is not None else "n/a",
                 present="yes" if artifact.get("exists") else "no",
                 component=artifact.get("component") or "n/a",
                 generated=artifact.get("generated_at") or "n/a",
@@ -256,6 +349,16 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("json", "markdown"),
         default="json",
         help="Render machine-readable JSON or a privacy-safe Markdown handoff.",
+    )
+    parser.add_argument(
+        "--max-artifact-age-minutes",
+        type=float,
+        default=None,
+        help=(
+            "Optional release-gate freshness window. When set, evidence artifacts "
+            "without parseable generated_at timestamps or older than this many "
+            "minutes fail the posture gate."
+        ),
     )
     parser.add_argument(
         "--require-pass",
