@@ -24,8 +24,8 @@ JSON
 cat >"$TMP_DIR/current-pass.json" <<'JSON'
 {
   "features": {
-    "len": {"mean": 101.0, "std": 10.0, "missing_rate": 0.0, "samples": [91, 96, 101, 106, 111, 116, 121, 126, 131, 136, 141, 146]},
-    "ttl": {"mean": 64.5, "std": 4.0, "missing_rate": 0.0, "samples": [60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71]},
+    "len": {"mean": 100.5, "std": 10.0, "missing_rate": 0.0, "samples": [90, 95, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145]},
+    "ttl": {"mean": 64.2, "std": 4.0, "missing_rate": 0.0, "samples": [60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71]},
     "dport": {"mean": 443.0, "std": 1.0, "missing_rate": 0.0, "samples": [443, 443, 443, 443, 443, 443, 443, 443, 443, 443, 443, 443]},
     "tcp_flags": {"mean": 18.0, "std": 1.0, "missing_rate": 0.0, "samples": [18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18]}
   }
