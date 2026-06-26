@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added `nn_ids_posture_bundle_manifest.py`, a passive privacy-safe release-gate manifest that aggregates NN IDS health, drift, and triage evidence into one machine-readable posture bundle.
+- Added `docs/nn_ids_posture_bundle_manifest.md` with usage, schema, release-gate behavior, threat-model rationale, compatibility notes, rollback guidance, and follow-up work.
+- Added `tests/test_nn_ids_posture_bundle_manifest_static.sh` covering compile validation, pass/warn aggregation, SHA-256 artifact hashes, privacy/rollback fields, missing artifact blockers, and `--require-pass` behavior.
 - Added `nn_ids_drift_triage.py`, a read-only renderer that converts passive NN IDS drift evidence into privacy-safe Markdown or JSON operator handoff artifacts.
 - Added `docs/nn_ids_drift_triage.md` with usage, release-gate behavior, threat-model rationale, compatibility notes, rollback guidance, and follow-up work.
 - Added tests covering drift triage summary counts, recommended actions, Markdown rendering, privacy notes, rollback notes, and `--require-pass` exit behavior.
@@ -18,6 +21,8 @@
 
 ### Security
 
+- The NN IDS posture bundle manifest is read-only and privacy-safe: it records only artifact paths, SHA-256 digests, aggregate statuses, and control IDs, without embedding packets, payloads, credentials, hostnames, usernames, raw captures, or secrets.
+- The posture bundle `--require-pass` path exits non-zero when required health, drift, or triage artifacts are missing or failing, making release gates auditable without changing firewall, service, model, dataset, or host/VM state.
 - The NN IDS drift triage renderer is read-only and privacy-safe: it consumes aggregate drift evidence and does not include packets, payloads, credentials, host secrets, or raw captures in generated handoffs.
 - The NN IDS drift evidence emitter is read-only: it does not open network sockets, execute commands, restart services, change firewall rules, or modify host/VM state.
 - Drift failures are treated as review gates for analytical trust and model promotion, not as certain indications of malicious traffic or operational targeting.
