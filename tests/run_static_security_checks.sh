@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # MINC - Repo-wide static validation for defensive Kali hardening modules.
 # This test is defensive only: it verifies syntax, packaging coverage, and service wiring.
+# Restore executor release gate token: host_vm_policy_restore_execute_static.sh
 
 set -euo pipefail
 
