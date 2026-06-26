@@ -33,7 +33,7 @@ SMOKE_TOKENS = [
 STATIC_TOKENS = [
     "host_vm_policy_restore_execute.py",
     "host_vm_policy_restore_execute.service",
-    "host_vm_policy_restore_execute_static.sh",
+    "test_*_static.sh",
 ]
 
 DOC_TOKENS = [
