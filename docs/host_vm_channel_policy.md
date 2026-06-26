@@ -62,9 +62,35 @@ Check referenced local credential-file permissions on a live Kali VM:
 python3 host_vm_channel_policy.py --policy /etc/kali-hardening/host_vm_channel_policy.json --check-local-files
 ```
 
-## Integration plan
+## Entrypoint preflight enforcement
 
-This run adds the policy engine, example policy, docs, and static tests. The next safe increment should wire `host_hardening_windows.sh` and `host_hardening_linux.sh` to run this validator before transferring or executing remote scripts. That integration should fail closed unless `KALI_HARDENING_SKIP_CHANNEL_POLICY=1` is explicitly set for a documented break-glass session.
+`host_hardening_windows.sh` and `host_hardening_linux.sh` now run a channel-policy preflight before SSH connectivity checks, file transfer, or remote execution. The preflight fails closed when the validator is missing, the policy file is missing, or the validator reports a failing control.
+
+Default paths are relative to the script directory:
+
+```bash
+CHANNEL_POLICY_VALIDATOR=./host_vm_channel_policy.py
+CHANNEL_POLICY_FILE=./host_vm_channel_policy.example.json
+CHANNEL_POLICY_CHECK_LOCAL_FILES=1
+```
+
+Operators can point the entrypoints at a deployed policy without editing the scripts:
+
+```bash
+CHANNEL_POLICY_FILE=/etc/kali-hardening/host_vm_channel_policy.json ./host_hardening_linux.sh
+```
+
+Credential-file permission checks are enabled by default for live host-hardening entrypoints because remote automation should not proceed with world-accessible or group-writable key material. CI can set `CHANNEL_POLICY_CHECK_LOCAL_FILES=0` for static-only validation.
+
+### Break-glass override
+
+A break-glass bypass exists only for console-supervised maintenance:
+
+```bash
+KALI_HARDENING_SKIP_CHANNEL_POLICY=1 ./host_hardening_windows.sh
+```
+
+Use it only when the policy file or validator is unavailable during recovery. Capture transcript logs, keep the session short, document the reason, restore the policy, and rerun validation before normal automation resumes.
 
 ## Research and guidance basis
 
@@ -75,4 +101,4 @@ This run adds the policy engine, example policy, docs, and static tests. The nex
 
 ## Rollback
 
-The validator is additive. To roll back this increment, remove `host_vm_channel_policy.py`, `host_vm_channel_policy.example.json`, this document, and `tests/test_host_vm_channel_policy_static.sh`. No system hardening behavior changes until future integration scripts call the validator.
+The validator itself is additive. To roll back only the preflight enforcement, revert the changes to `host_hardening_windows.sh`, `host_hardening_linux.sh`, and `tests/test_host_vm_policy_preflight_static.sh`. To remove the full policy feature, also remove `host_vm_channel_policy.py`, `host_vm_channel_policy.example.json`, `tests/test_host_vm_channel_policy_static.sh`, and this document.
