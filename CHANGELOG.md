@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added `firstboot_release_gate_status.py`, a passive aggregate-only reader for `firstboot_release_gate.summary.env` that emits text or JSON status for dashboards, smoke checks, shift handoffs, and release gates without sourcing shell content.
+- Added `docs/firstboot_release_gate_status.md`, packaging coverage, and tests for passing summaries, deferred status, malformed summary validation, privacy-scope enforcement, and text output.
 - Added `docs/firstboot_release_gate_operator_summary_contract.md`, defining a privacy-safe shell-friendly firstboot release-gate summary artifact for dashboards, release scripts, recovery runbooks, and future implementation coverage.
 - Added `firstboot_release_gate.service` and `firstboot_release_gate.timer`, a passive recurring refresh path for firstboot release-gate JSON/Markdown handoff evidence.
 - Packaged the firstboot release-gate timer units in `build_custom_iso.sh`, enabled the timer from `firstboot.sh`, added an immediate non-blocking firstboot gate run, and added static coverage for packaging, firstboot wiring, systemd sandboxing, passive/offline behavior, and timer cadence.
@@ -56,6 +58,7 @@
 
 ### Security
 
+- The firstboot release-gate status reader is passive and aggregate-only: it parses a strict quoted summary contract without sourcing shell content, rejects malformed or non-aggregate privacy scopes, and does not read raw logs, packets, captures, credentials, hostnames, usernames, secrets, model binaries, or datasets.
 - The firstboot release-gate operator summary contract preserves passive aggregate-only evidence boundaries and explicitly excludes raw telemetry, credentials, identities, model artifacts, datasets, and environment identifiers from future dashboard-friendly outputs.
 - The firstboot release-gate timer is passive and sandboxed: it refreshes aggregate JSON/Markdown decision artifacts on a schedule without opening network sockets, restarting services, changing firewall rules, modifying models or datasets, approving restores, or altering live host/VM state.
 - The timer service restricts writes to `/var/log`, reads only the expected firstboot manifest and NN IDS model-card inputs, uses `NoNewPrivileges=true`, `PrivateTmp=true`, `ProtectSystem=full`, `ProtectHome=true`, kernel/control-group protections, and an empty capability bounding set.
