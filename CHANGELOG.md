@@ -93,4 +93,11 @@
 - The posture release checklist is passive and privacy-safe: it consumes only aggregate manifest metadata and emits operator actions without embedding sensitive telemetry, credentials, hostnames, usernames, secrets, or raw IDS logs.
 - The posture bundle freshness gate is passive and privacy-safe: it uses only each evidence artifact's aggregate `generated_at` timestamp and never reads sensitive telemetry, credentials, hostnames, usernames, secrets, or raw IDS logs.
 - The Markdown posture bundle handoff is generated from aggregate manifest evidence only; it does not embed sensitive telemetry, credentials, hostnames, usernames, secrets, or raw IDS logs.
-- The NN IDS posture bundle manifest is read-only and privacy-safe: it records aggregate posture evidence metadata, SHA-256 hashes, warnings, blockers, and release-gate state without embedding sensitive telemetry, credentials, hostnames, usernames, secrets, or raw IDS logs.
+- The NN IDS posture bundle manifest is read-only and privacy-safe: it records only artifact paths, SHA-256 digests, aggregate statuses, and control IDs, without embedding sensitive telemetry, credentials, hostnames, usernames, raw captures, or secrets.
+- The posture bundle `--require-pass` path exits non-zero when required health, drift, or triage artifacts are missing or failing, making release gates auditable without changing firewall, service, model, dataset, or host/VM state.
+- The NN IDS drift triage renderer is read-only and privacy-safe: it consumes aggregate drift evidence and does not include sensitive telemetry, credentials, host secrets, or raw captures in generated handoffs.
+- The NN IDS drift evidence emitter is read-only: it does not open network sockets, execute commands, restart services, change firewall rules, or modify host/VM state.
+- Drift failures are treated as review gates for analytical trust and model promotion, not as certain indications of malicious traffic or operational targeting.
+- The NN IDS evidence emitter is read-only: it does not open network sockets, execute commands, restart services, change firewall rules, or modify host/VM state.
+- `nn_ids_health_evidence.service` uses systemd hardening controls including `NoNewPrivileges=true`, `PrivateTmp=true`, `ProtectSystem=full`, `ProtectHome=true`, an empty capability bounding set, `ReadOnlyPaths=/opt/nnids`, and `ReadWritePaths=/var/log`.
+- `--require-pass` exits non-zero when model evidence, metric evidence, or recent health markers indicate degraded IDS posture.
