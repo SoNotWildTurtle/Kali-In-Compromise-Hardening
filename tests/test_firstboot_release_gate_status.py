@@ -137,4 +137,3 @@ def test_status_reader_markdown_mode_preserves_deferred_blockers(tmp_path: Path)
     assert "| Release gate | `stop` |" in result.stdout
     assert "| Blocker count | `1` |" in result.stdout
     assert "Regenerate stale or clock-skewed firstboot release evidence" in result.stdout
-}
