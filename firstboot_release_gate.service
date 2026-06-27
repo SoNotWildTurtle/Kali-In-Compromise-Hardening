@@ -7,6 +7,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/firstboot_release_gate.py --firstboot-manifest /var/log/host_vm_policy_firstboot_manifest.json --model-card /var/log/nn_ids_model_card.json --output /var/log/firstboot_release_gate.json --markdown /var/log/firstboot_release_gate.md --summary /var/log/firstboot_release_gate.summary.env --max-artifact-age-minutes 240
+ExecStartPost=/bin/sh -c '/usr/local/bin/firstboot_release_gate_status.py --summary /var/log/firstboot_release_gate.summary.env --format json > /var/log/firstboot_release_gate.status.json || true'
+ExecStartPost=/usr/local/bin/firstboot_release_gate_bundle_manifest.py --gate-json /var/log/firstboot_release_gate.json --gate-markdown /var/log/firstboot_release_gate.md --summary /var/log/firstboot_release_gate.summary.env --status-json /var/log/firstboot_release_gate.status.json --output /var/log/firstboot_release_gate.bundle_manifest.json
+ExecStartPost=/usr/local/bin/firstboot_release_gate_bundle_manifest.py --gate-json /var/log/firstboot_release_gate.json --gate-markdown /var/log/firstboot_release_gate.md --summary /var/log/firstboot_release_gate.summary.env --status-json /var/log/firstboot_release_gate.status.json --output /var/log/firstboot_release_gate.bundle_manifest.md --format markdown
 User=root
 Group=root
 NoNewPrivileges=true
