@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added `host_vm_policy_firstboot_handoff.py`, a read-only helper that composes the host/VM policy evidence bundle and receipt into JSON and Markdown firstboot/release handoff artifacts.
+- Packaged `host_vm_policy_firstboot_handoff.py` in `build_custom_iso.sh` and added static behavior coverage for approved and deferred handoff decisions.
+- Documented firstboot handoff usage, generated artifacts, privacy/security rationale, compatibility, rollback guidance, and follow-up work.
 - Packaged `host_vm_policy_evidence_bundle_receipt.py` in `build_custom_iso.sh` and added a static packaging regression check so custom Kali images include the read-only receipt gate.
 - Added `host_vm_policy_evidence_bundle_receipt.py`, a passive receipt gate that converts aggregate host/VM policy evidence bundles into explicit approved/deferred JSON and Markdown handoff artifacts.
 - Added static receipt-gate coverage for approved bundles, deferred review bundles, warning-only approval behavior, missing bundle handling, release-gate exits, and privacy boundaries.
@@ -41,6 +44,8 @@
 
 ### Security
 
+- The firstboot handoff helper is passive and privacy-safe: it composes aggregate evidence and receipt metadata only and emits review artifacts without embedding raw logs, packets, captures, credentials, hostnames, usernames, secrets, model binaries, or datasets.
+- The handoff `--require-ready` path exits non-zero when the receipt is deferred, giving CI, release, firstboot promotion, and recovery workflows an auditable stop condition without changing live host/VM, IDS, approval, or restore state.
 - The host/VM policy evidence receipt gate is passive and privacy-safe: it consumes aggregate bundle metadata only and emits approved/deferred decisions without embedding raw logs, captures, credentials, hostnames, usernames, secrets, or model files.
 - The receipt `--require-ready` path exits non-zero when evidence is deferred, giving release, firstboot, and recovery workflows an auditable stop condition without changing live host/VM, IDS, approval, or restore state.
 - The NN IDS model-card freshness gate is passive and privacy-safe: it uses only aggregate `generated_at` timestamps and artifact paths to fail stale or untimestamped release evidence without reading raw packets, payloads, captures, credentials, hostnames, usernames, secrets, model binaries, raw IDS logs, or host/VM state.
