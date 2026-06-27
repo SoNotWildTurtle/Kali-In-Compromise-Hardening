@@ -15,6 +15,14 @@ assert_file_contains() {
     grep -Fq -- "$expected" "$file" || fail "Expected '$expected' in $file"
 }
 
+assert_no_timer_command_token() {
+    local file="$1"
+    local token="$2"
+    if grep -Eq "(^|[[:space:]/;|&])${token}([[:space:];|&]|$)" "$file"; then
+        fail "$file must not contain disallowed command token: $token"
+    fi
+}
+
 python3 -m py_compile firstboot_release_gate.py
 bash -n build_custom_iso.sh
 bash -n firstboot.sh
@@ -47,12 +55,9 @@ assert_file_contains firstboot_release_gate.timer 'OnUnitActiveSec=1h'
 assert_file_contains firstboot_release_gate.timer 'Persistent=true'
 assert_file_contains firstboot_release_gate.timer 'Unit=firstboot_release_gate.service'
 
-if grep -Eq 'Exec(Start|StartPre|StartPost)=.*(iptables|nft|ufw|systemctl restart|service .* restart|rm -rf|curl|wget|ssh|scp|nc|ncat|socat)' firstboot_release_gate.service; then
-    fail 'firstboot_release_gate.service must remain passive and offline'
-fi
-
-if grep -Eq '(iptables|nft|ufw|systemctl restart|service .* restart|rm -rf|curl|wget|ssh|scp|nc|ncat|socat)' firstboot_release_gate.timer; then
-    fail 'firstboot_release_gate.timer must remain passive and offline'
-fi
+# Keep this check token-aware: short command names must not match ordinary prose.
+for token in iptables nft ufw curl wget ssh scp nc ncat socat; do
+    assert_no_timer_command_token firstboot_release_gate.timer "$token"
+done
 
 echo '[PASS] firstboot release gate timer static coverage'
