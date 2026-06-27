@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added `host_vm_policy_firstboot_manifest.py`, a passive manifest helper that records firstboot handoff artifact presence, sizes, SHA-256 digests, decisions, blockers, rollback guidance, and operator next steps.
+- Packaged `host_vm_policy_firstboot_manifest.py` in `build_custom_iso.sh` and added static coverage for approved manifests, missing required artifact blockers, deferred handoff blockers, Markdown rendering, privacy notes, and `--require-ready` behavior.
+- Added `docs/host_vm_policy_firstboot_manifest.md` with usage, output contract, privacy/security rationale, compatibility notes, rollback guidance, and follow-up work.
 - Added `host_vm_policy_firstboot_handoff.py`, a read-only helper that composes the host/VM policy evidence bundle and receipt into JSON and Markdown firstboot/release handoff artifacts.
 - Packaged `host_vm_policy_firstboot_handoff.py` in `build_custom_iso.sh` and added static behavior coverage for approved and deferred handoff decisions.
 - Documented firstboot handoff usage, generated artifacts, privacy/security rationale, compatibility, rollback guidance, and follow-up work.
@@ -44,6 +47,8 @@
 
 ### Security
 
+- The firstboot manifest helper is passive and privacy-safe: it records paths, sizes, hashes, and aggregate readiness metadata without embedding raw telemetry, environment identifiers, credentials, private operator data, model files, or datasets.
+- The manifest `--require-ready` path exits non-zero when required handoff artifacts are missing, malformed, or deferred, giving release and firstboot promotion workflows an auditable stop condition without modifying live host, VM, IDS, approval, or recovery state.
 - The firstboot handoff helper is passive and privacy-safe: it composes aggregate evidence and receipt metadata only and emits review artifacts without embedding raw logs, packets, captures, credentials, hostnames, usernames, secrets, model binaries, or datasets.
 - The handoff `--require-ready` path exits non-zero when the receipt is deferred, giving CI, release, firstboot promotion, and recovery workflows an auditable stop condition without changing live host/VM, IDS, approval, or restore state.
 - The host/VM policy evidence receipt gate is passive and privacy-safe: it consumes aggregate bundle metadata only and emits approved/deferred decisions without embedding raw logs, captures, credentials, hostnames, usernames, secrets, or model files.
