@@ -16,6 +16,7 @@ DEFAULT_FIRSTBOOT_MANIFEST = Path('/var/log/host_vm_policy_firstboot_manifest.js
 DEFAULT_MODEL_CARD = Path('/var/log/nn_ids_model_card.json')
 DEFAULT_OUTPUT = Path('/var/log/firstboot_release_gate.json')
 DEFAULT_MARKDOWN = Path('/var/log/firstboot_release_gate.md')
+DEFAULT_SUMMARY = Path('/var/log/firstboot_release_gate.summary.env')
 FUTURE_SKEW_SECONDS = 300
 
 
@@ -242,12 +243,49 @@ def write_markdown(path: Path, gate: Dict[str, Any]) -> None:
     path.write_text('\n'.join(lines), encoding='utf-8')
 
 
+def stale_or_skewed_count(blockers: list[str]) -> int:
+    return sum(1 for blocker in blockers if ':stale:' in blocker or ':future_mtime:' in blocker or ':mtime_unavailable' in blocker)
+
+
+def env_quote(value: object) -> str:
+    text = str(value).replace('\\', '\\\\').replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
+    return f'"{text}"'
+
+
+def summary_fields(gate: Dict[str, Any]) -> Dict[str, object]:
+    blockers = gate.get('blockers') or []
+    artifacts = gate.get('artifacts') or []
+    return {
+        'FIRSTBOOT_RELEASE_GATE_SCHEMA_VERSION': gate.get('schema_version', 1),
+        'FIRSTBOOT_RELEASE_GATE_COMPONENT': gate.get('component', 'firstboot_release_gate'),
+        'FIRSTBOOT_RELEASE_GATE_CREATED_UTC': gate.get('created_utc', 'unknown'),
+        'FIRSTBOOT_RELEASE_GATE_OK': str(bool(gate.get('ok'))).lower(),
+        'FIRSTBOOT_RELEASE_GATE_DECISION': gate.get('decision', 'unknown'),
+        'FIRSTBOOT_RELEASE_GATE_STATUS': gate.get('release_gate', 'unknown'),
+        'FIRSTBOOT_RELEASE_GATE_BLOCKER_COUNT': len(blockers),
+        'FIRSTBOOT_RELEASE_GATE_ARTIFACT_COUNT': len(artifacts),
+        'FIRSTBOOT_RELEASE_GATE_STALE_OR_SKEWED_COUNT': stale_or_skewed_count(blockers),
+        'FIRSTBOOT_RELEASE_GATE_PRIVACY_SCOPE': 'aggregate_only',
+    }
+
+
+def write_summary(path: Path, gate: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [f'{key}={env_quote(value)}' for key, value in summary_fields(gate).items()]
+    path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Compose host/VM firstboot and NN IDS model-card evidence into one passive release gate.')
     parser.add_argument('--firstboot-manifest', default=str(DEFAULT_FIRSTBOOT_MANIFEST))
     parser.add_argument('--model-card', default=str(DEFAULT_MODEL_CARD))
     parser.add_argument('--output', default=str(DEFAULT_OUTPUT))
     parser.add_argument('--markdown', default=str(DEFAULT_MARKDOWN))
+    parser.add_argument(
+        '--summary',
+        default=str(DEFAULT_SUMMARY),
+        help='Write a shell-friendly aggregate status summary; pass an empty value to disable.',
+    )
     parser.add_argument('--require-pass', action='store_true')
     parser.add_argument(
         '--max-artifact-age-minutes',
@@ -266,7 +304,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     gate = build_gate(args)
     write_json(Path(args.output), gate)
     write_markdown(Path(args.markdown), gate)
-    print(json.dumps({'decision': gate['decision'], 'ok': gate['ok'], 'output': args.output}, sort_keys=True))
+    if args.summary:
+        write_summary(Path(args.summary), gate)
+    print(json.dumps({'decision': gate['decision'], 'ok': gate['ok'], 'output': args.output, 'summary': args.summary}, sort_keys=True))
     return 0 if gate['ok'] or not args.require_pass else 7
 
 
