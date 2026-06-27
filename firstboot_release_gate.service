@@ -1,0 +1,28 @@
+[Unit]
+Description=Compose passive firstboot release-gate evidence
+Documentation=man:systemd.service(5)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/firstboot_release_gate.py --firstboot-manifest /var/log/host_vm_policy_firstboot_manifest.json --model-card /var/log/nn_ids_model_card.json --output /var/log/firstboot_release_gate.json --markdown /var/log/firstboot_release_gate.md --max-artifact-age-minutes 240
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+ReadOnlyPaths=/var/log/host_vm_policy_firstboot_manifest.json /var/log/nn_ids_model_card.json
+ReadWritePaths=/var/log
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
