@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added `firstboot_release_gate.service` and `firstboot_release_gate.timer`, a passive recurring refresh path for firstboot release-gate JSON/Markdown handoff evidence.
+- Packaged the firstboot release-gate timer units in `build_custom_iso.sh`, enabled the timer from `firstboot.sh`, added an immediate non-blocking firstboot gate run, and added static coverage for packaging, firstboot wiring, systemd sandboxing, passive/offline behavior, and timer cadence.
+- Updated `docs/firstboot_release_gate.md` with timer workflow, generated artifacts, sandboxing rationale, rollback guidance, compatibility notes, and follow-up work.
 - Added `firstboot_release_gate.py`, a passive gate that composes host/VM firstboot manifest readiness and NN IDS model-card readiness into one privacy-safe JSON/Markdown release decision for ISO promotion, firstboot handoff, and recovery review.
 - Packaged `firstboot_release_gate.py` in `build_custom_iso.sh` and added static coverage for approved gates, deferred NN IDS gates, missing evidence, invalid freshness thresholds, Markdown rendering, privacy text, and packaging regression checks.
 - Added `docs/firstboot_release_gate.md` with usage, output contract, threat-model rationale, compatibility notes, rollback guidance, and follow-up work.
@@ -52,6 +55,8 @@
 
 ### Security
 
+- The firstboot release-gate timer is passive and sandboxed: it refreshes aggregate JSON/Markdown decision artifacts on a schedule without opening network sockets, restarting services, changing firewall rules, modifying models or datasets, approving restores, or altering live host/VM state.
+- The timer service restricts writes to `/var/log`, reads only the expected firstboot manifest and NN IDS model-card inputs, uses `NoNewPrivileges=true`, `PrivateTmp=true`, `ProtectSystem=full`, `ProtectHome=true`, kernel/control-group protections, and an empty capability bounding set.
 - The firstboot release gate is passive and privacy-safe: it consumes only the host/VM firstboot manifest and NN IDS model-card aggregate evidence, then emits a combined go/no-go decision without reading raw packets, captures, logs, credentials, hostnames, usernames, secrets, model binaries, datasets, or live host/VM state.
 - The release gate `--require-pass` path exits non-zero when either host/VM firstboot handoff or NN IDS model-card readiness is missing, malformed, stale, or failing, giving ISO promotion and firstboot handoff workflows an auditable stop condition without changing services, timers, firewall rules, model artifacts, datasets, host settings, VM settings, approvals, or restore state.
 - The firstboot manifest freshness gate is passive and privacy-safe: it uses only artifact modification times, paths, sizes, and hashes to reject stale or clock-skewed handoff evidence without opening sockets, executing commands, restarting services, changing firewall rules, or modifying host/VM, IDS, approval, evidence, or recovery state.
