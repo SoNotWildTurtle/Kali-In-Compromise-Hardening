@@ -272,5 +272,13 @@ if [ -x /usr/local/bin/host_vm_policy_approval_check.py ]; then
     /usr/local/bin/host_vm_policy_approval_check.py --write-template >/var/log/host_vm_policy_approval_check.template.log 2>&1 || true
 fi
 
+# Keep passive firstboot release-gate evidence refreshed for handoff and recovery review.
+if systemctl list-unit-files | grep -q '^firstboot_release_gate.timer'; then
+    systemctl enable --now firstboot_release_gate.timer || true
+fi
+if [ -x /usr/local/bin/firstboot_release_gate.py ]; then
+    /usr/local/bin/firstboot_release_gate.py --max-artifact-age-minutes "${FIRSTBOOT_RELEASE_GATE_MAX_AGE_MINUTES:-240}" >/var/log/firstboot_release_gate.firstboot.log 2>&1 || true
+fi
+
 # Disable this first boot service so it runs only once
 systemctl disable firstboot.service

@@ -1,0 +1,13 @@
+[Unit]
+Description=Refresh passive firstboot release-gate evidence
+Documentation=man:systemd.timer(5)
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1h
+AccuracySec=5min
+Persistent=true
+Unit=firstboot_release_gate.service
+
+[Install]
+WantedBy=timers.target
