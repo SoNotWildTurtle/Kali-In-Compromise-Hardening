@@ -6,7 +6,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/firstboot_release_gate.py --firstboot-manifest /var/log/host_vm_policy_firstboot_manifest.json --model-card /var/log/nn_ids_model_card.json --output /var/log/firstboot_release_gate.json --markdown /var/log/firstboot_release_gate.md --max-artifact-age-minutes 240
+ExecStart=/usr/local/bin/firstboot_release_gate.py --firstboot-manifest /var/log/host_vm_policy_firstboot_manifest.json --model-card /var/log/nn_ids_model_card.json --output /var/log/firstboot_release_gate.json --markdown /var/log/firstboot_release_gate.md --summary /var/log/firstboot_release_gate.summary.env --max-artifact-age-minutes 240
 User=root
 Group=root
 NoNewPrivileges=true
