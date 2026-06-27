@@ -4,6 +4,8 @@
 
 ### Added
 
+- Packaged `firstboot_release_gate_bundle_manifest.py` into custom ISO builds so hardened images include the passive aggregate evidence bundle manifest helper by default.
+- Added `tests/test_firstboot_release_gate_bundle_packaging_static.sh` to cover helper compilation, ISO packaging, documentation, changelog, and rollback guidance for the bundle manifest packaging path.
 - Added `firstboot_release_gate_status.py`, a passive aggregate-only reader for `firstboot_release_gate.summary.env` that emits text or JSON status for dashboards, smoke checks, shift handoffs, and release gates without sourcing shell content.
 - Added `docs/firstboot_release_gate_status.md`, packaging coverage, and tests for passing summaries, deferred status, malformed summary validation, privacy-scope enforcement, and text output.
 - Added `docs/firstboot_release_gate_operator_summary_contract.md`, defining a privacy-safe shell-friendly firstboot release-gate summary artifact for dashboards, release scripts, recovery runbooks, and future implementation coverage.
@@ -58,6 +60,7 @@
 
 ### Security
 
+- The firstboot release-gate bundle manifest packaging is additive and passive: it makes the helper available in custom images without enabling a new service, opening sockets, changing firewall rules, modifying firstboot state, approving restores, or touching host/VM settings, IDS models, datasets, approvals, or recovery state.
 - The firstboot release-gate status reader is passive and aggregate-only: it parses a strict quoted summary contract without sourcing shell content, rejects malformed or non-aggregate privacy scopes, and does not read raw logs, packets, captures, credentials, hostnames, usernames, secrets, model binaries, or datasets.
 - The firstboot release-gate operator summary contract preserves passive aggregate-only evidence boundaries and explicitly excludes raw telemetry, credentials, identities, model artifacts, datasets, and environment identifiers from future dashboard-friendly outputs.
 - The firstboot release-gate timer is passive and sandboxed: it refreshes aggregate JSON/Markdown decision artifacts on a schedule without opening network sockets, restarting services, changing firewall rules, modifying models or datasets, approving restores, or altering live host/VM state.
