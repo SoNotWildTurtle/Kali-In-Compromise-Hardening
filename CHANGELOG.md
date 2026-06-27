@@ -22,7 +22,7 @@
 - Added opt-in `--max-artifact-age-minutes` freshness gating to `host_vm_policy_firstboot_manifest.py`, allowing firstboot and release reviewers to block stale or clock-skewed host/VM handoff artifacts without reading raw telemetry or changing host/VM state.
 - Added `mtime_utc`, `age_seconds`, and `freshness_policy` fields to firstboot handoff manifests, plus Markdown freshness reporting and static coverage for passing freshness, stale artifact blockers, invalid threshold input, and unchanged default behavior.
 - Added `host_vm_policy_firstboot_manifest.py`, a passive manifest helper that records firstboot handoff artifact presence, sizes, SHA-256 digests, decisions, blockers, rollback guidance, and operator next steps.
-- Packaged `host_vm_policy_firstboot_manifest.py` in `build_custom_iso.sh` and added static coverage for approved manifests, missing required artifact blockers, Markdown rendering, privacy notes, and `--require-ready` behavior.
+- Packaged `host_vm_policy_firstboot_manifest.py` in `build_custom_iso.sh` and added static coverage for approved manifests, missing required artifact blockers, deferred handoff blockers, Markdown rendering, privacy notes, and `--require-ready` behavior.
 - Added `docs/host_vm_policy_firstboot_manifest.md` with usage, output contract, privacy/security rationale, compatibility notes, rollback guidance, and follow-up work.
 - Added `host_vm_policy_firstboot_handoff.py`, a read-only helper that composes the host/VM policy evidence bundle and receipt into JSON and Markdown firstboot/release handoff artifacts.
 - Packaged `host_vm_policy_firstboot_handoff.py` in `build_custom_iso.sh` and added static behavior coverage for approved and deferred handoff decisions.
@@ -94,4 +94,6 @@
 - The NN IDS drift triage renderer is read-only and privacy-safe: it consumes aggregate drift evidence and does not include sensitive telemetry, credentials, host secrets, or raw captures in generated handoffs.
 - The NN IDS drift evidence emitter is read-only: it does not open network sockets, execute commands, restart services, change firewall rules, or modify host/VM state.
 - Drift failures are treated as review gates for analytical trust and model promotion, not as certain indications of malicious traffic or operational targeting.
-- The NN IDS evidence emitter is read-only: it does not open network sockets, execute commands, restart services...
+- The NN IDS evidence emitter is read-only: it does not open network sockets, execute commands, restart services, change firewall rules, or modify host/VM state.
+- `nn_ids_health_evidence.service` uses systemd hardening controls including `NoNewPrivileges=true`, `PrivateTmp=true`, `ProtectSystem=full`, `ProtectHome=true`, an empty capability bounding set, `ReadOnlyPaths=/opt/nnids`, and `ReadWritePaths=/var/log`.
+- `--require-pass` exits non-zero when model evidence, metric evidence, or recent health markers indicate degraded IDS posture.
