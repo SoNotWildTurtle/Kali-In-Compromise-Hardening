@@ -113,6 +113,7 @@ core_modules=(
     "host_vm_policy_firstboot_manifest.py"
     "firstboot_release_gate.py"
     "firstboot_release_gate_status.py"
+    "firstboot_release_gate_bundle_manifest.py"
     "firstboot_release_gate.service"
     "firstboot_release_gate.timer"
     "host_vm_policy_restore_execute.py"
