@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added `--format markdown` to `firstboot_release_gate_bundle_manifest.py`, giving operators a privacy-safe readable bundle handoff report with status summary, artifact hashes, blockers, next steps, safety notes, and rollback guidance while preserving the existing JSON default and `--require-pass` behavior.
+- Added `tests/test_firstboot_release_gate_bundle_manifest_markdown.py` to cover passing Markdown output, deferred release-gate Markdown output, privacy exclusions, safe-default language, rollback text, and non-zero `--require-pass` behavior.
 - Packaged `firstboot_release_gate_bundle_manifest.py` into custom ISO builds so hardened images include the passive aggregate evidence bundle manifest helper by default.
 - Added `tests/test_firstboot_release_gate_bundle_packaging_static.sh` to cover helper compilation, ISO packaging, documentation, changelog, and rollback guidance for the bundle manifest packaging path.
 - Added `firstboot_release_gate_status.py`, a passive aggregate-only reader for `firstboot_release_gate.summary.env` that emits text or JSON status for dashboards, smoke checks, shift handoffs, and release gates without sourcing shell content.
@@ -47,7 +49,7 @@
 - Added `docs/nn_ids_posture_bundle_manifest.md` with usage, schema, release-gate behavior, threat-model rationale, compatibility notes, rollback guidance, and follow-up work.
 - Added `tests/test_nn_ids_posture_bundle_manifest_static.sh` covering compile validation, pass/warn aggregation, SHA-256 artifact hashes, privacy/rollback fields, missing artifact blockers, and `--require-pass` behavior.
 - Added `nn_ids_drift_triage.py`, a read-only renderer that converts passive NN IDS drift evidence into privacy-safe Markdown or JSON operator handoff artifacts.
-- Added `docs/nn_ids_drift_triage.md` with usage, release-gate behavior, threat-model rationale, compatibility notes, rollback guidance, and follow-up work.
+- Added `docs/nn_ids_drift_triage.md` with usage, release-gate behavior, threat-model rationale, compatibility notes, and follow-up work.
 - Added tests covering drift triage summary counts, recommended actions, Markdown rendering, privacy notes, rollback notes, and `--require-pass` exit behavior.
 - Added `nn_ids_drift_evidence.py`, a passive JSON evidence emitter that compares baseline and current NN IDS feature statistics for PSI, mean-shift, and missing-rate drift before model or release promotion.
 - Added `docs/nn_ids_drift_evidence.md` with input schema, examples, thresholds, rollback notes, and follow-up work for posture-summary and dashboard integration.
@@ -60,6 +62,7 @@
 
 ### Security
 
+- The firstboot release-gate bundle manifest Markdown output is additive and passive: it renders the same aggregate manifest data as JSON, does not read raw telemetry, does not open sockets, and does not change firewall rules, services, models, datasets, approvals, restore state, or host/VM settings.
 - The firstboot release-gate bundle manifest packaging is additive and passive: it makes the helper available in custom images without enabling a new service, opening sockets, changing firewall rules, modifying firstboot state, approving restores, or touching host/VM settings, IDS models, datasets, approvals, or recovery state.
 - The firstboot release-gate status reader is passive and aggregate-only: it parses a strict quoted summary contract without sourcing shell content, rejects malformed or non-aggregate privacy scopes, and does not read raw logs, packets, captures, credentials, hostnames, usernames, secrets, model binaries, or datasets.
 - The firstboot release-gate operator summary contract preserves passive aggregate-only evidence boundaries and explicitly excludes raw telemetry, credentials, identities, model artifacts, datasets, and environment identifiers from future dashboard-friendly outputs.
