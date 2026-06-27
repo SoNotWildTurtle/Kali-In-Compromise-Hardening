@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added opt-in `--max-artifact-age-minutes` freshness gating to `host_vm_policy_firstboot_manifest.py`, allowing firstboot and release reviewers to block stale or clock-skewed host/VM handoff artifacts without reading raw telemetry or changing host/VM state.
+- Added `mtime_utc`, `age_seconds`, and `freshness_policy` fields to firstboot handoff manifests, plus Markdown freshness reporting and static coverage for passing freshness, stale artifact blockers, invalid threshold input, and unchanged default behavior.
 - Added `host_vm_policy_firstboot_manifest.py`, a passive manifest helper that records firstboot handoff artifact presence, sizes, SHA-256 digests, decisions, blockers, rollback guidance, and operator next steps.
 - Packaged `host_vm_policy_firstboot_manifest.py` in `build_custom_iso.sh` and added static coverage for approved manifests, missing required artifact blockers, deferred handoff blockers, Markdown rendering, privacy notes, and `--require-ready` behavior.
 - Added `docs/host_vm_policy_firstboot_manifest.md` with usage, output contract, privacy/security rationale, compatibility notes, rollback guidance, and follow-up work.
@@ -47,8 +49,9 @@
 
 ### Security
 
+- The firstboot manifest freshness gate is passive and privacy-safe: it uses only artifact modification times, paths, sizes, and hashes to reject stale or clock-skewed handoff evidence without opening sockets, executing commands, restarting services, changing firewall rules, or modifying host/VM, IDS, approval, evidence, or recovery state.
 - The firstboot manifest helper is passive and privacy-safe: it records paths, sizes, hashes, and aggregate readiness metadata without embedding raw telemetry, environment identifiers, credentials, private operator data, model files, or datasets.
-- The manifest `--require-ready` path exits non-zero when required handoff artifacts are missing, malformed, or deferred, giving release and firstboot promotion workflows an auditable stop condition without modifying live host, VM, IDS, approval, or recovery state.
+- The manifest `--require-ready` path exits non-zero when required handoff artifacts are missing, malformed, deferred, stale, or clock-skewed, giving release and firstboot promotion workflows an auditable stop condition without modifying live host, VM, IDS, approval, or recovery state.
 - The firstboot handoff helper is passive and privacy-safe: it composes aggregate evidence and receipt metadata only and emits review artifacts without embedding raw logs, packets, captures, credentials, hostnames, usernames, secrets, model binaries, or datasets.
 - The handoff `--require-ready` path exits non-zero when the receipt is deferred, giving CI, release, firstboot promotion, and recovery workflows an auditable stop condition without changing live host/VM, IDS, approval, or restore state.
 - The host/VM policy evidence receipt gate is passive and privacy-safe: it consumes aggregate bundle metadata only and emits approved/deferred decisions without embedding raw logs, captures, credentials, hostnames, usernames, secrets, or model files.
