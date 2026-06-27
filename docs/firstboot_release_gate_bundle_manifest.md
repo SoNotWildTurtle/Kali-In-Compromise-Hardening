@@ -29,6 +29,12 @@ python3 firstboot_release_gate_bundle_manifest.py \
 
 With `--require-pass`, the command exits `7` when any required artifact is missing, the status JSON is malformed, the status component is unexpected, the status is not passing, or status validation blockers are present.
 
+## Custom ISO packaging
+
+`build_custom_iso.sh` now includes `firstboot_release_gate_bundle_manifest.py` in the core module list for both installer and live custom ISO builds. This keeps the offline release handoff helper available on hardened images alongside `firstboot_release_gate.py`, `firstboot_release_gate_status.py`, and the timer/service units that refresh aggregate firstboot release evidence.
+
+The packaging entry is intentionally additive: it copies the helper into the ISO install payload but does not enable a new service, open network sockets, alter existing timers, change firewall rules, or modify host, VM, IDS, approval, restore, or firstboot state.
+
 ## Output contract
 
 The manifest emits JSON with:
@@ -48,6 +54,8 @@ The helper does not open network sockets, execute host commands, restart service
 ## Compatibility
 
 The helper uses only the Python standard library and is safe for Kali/Debian Python 3 environments. It does not require root privileges, systemd, network access, or external packages.
+
+The custom ISO packaging change preserves existing installer/live modes and only adds the helper to the existing copy list.
 
 ## Rollback
 
