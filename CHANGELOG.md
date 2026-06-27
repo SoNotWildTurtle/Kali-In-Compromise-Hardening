@@ -4,6 +4,8 @@
 
 ### Added
 
+- Wired `firstboot_release_gate.service` to refresh `/var/log/firstboot_release_gate.status.json`, `/var/log/firstboot_release_gate.bundle_manifest.json`, and `/var/log/firstboot_release_gate.bundle_manifest.md` after the passive release-gate artifacts are generated, keeping hourly handoff evidence coherent for dashboards, release review, and recovery bundles.
+- Extended `tests/test_firstboot_release_gate_timer_static.sh` to compile the status and bundle helpers and verify the service emits status JSON plus both JSON and Markdown bundle manifests while preserving sandboxing and passive timer behavior.
 - Added `--format markdown` to `firstboot_release_gate_bundle_manifest.py`, giving operators a privacy-safe readable bundle handoff report with status summary, artifact hashes, blockers, next steps, safety notes, and rollback guidance while preserving the existing JSON default and `--require-pass` behavior.
 - Added `tests/test_firstboot_release_gate_bundle_manifest_markdown.py` to cover passing Markdown output, deferred release-gate Markdown output, privacy exclusions, safe-default language, rollback text, and non-zero `--require-pass` behavior.
 - Packaged `firstboot_release_gate_bundle_manifest.py` into custom ISO builds so hardened images include the passive aggregate evidence bundle manifest helper by default.
@@ -20,7 +22,7 @@
 - Added opt-in `--max-artifact-age-minutes` freshness gating to `host_vm_policy_firstboot_manifest.py`, allowing firstboot and release reviewers to block stale or clock-skewed host/VM handoff artifacts without reading raw telemetry or changing host/VM state.
 - Added `mtime_utc`, `age_seconds`, and `freshness_policy` fields to firstboot handoff manifests, plus Markdown freshness reporting and static coverage for passing freshness, stale artifact blockers, invalid threshold input, and unchanged default behavior.
 - Added `host_vm_policy_firstboot_manifest.py`, a passive manifest helper that records firstboot handoff artifact presence, sizes, SHA-256 digests, decisions, blockers, rollback guidance, and operator next steps.
-- Packaged `host_vm_policy_firstboot_manifest.py` in `build_custom_iso.sh` and added static coverage for approved manifests, missing required artifact blockers, deferred handoff blockers, Markdown rendering, privacy notes, and `--require-ready` behavior.
+- Packaged `host_vm_policy_firstboot_manifest.py` in `build_custom_iso.sh` and added static coverage for approved manifests, missing required artifact blockers, Markdown rendering, privacy notes, and `--require-ready` behavior.
 - Added `docs/host_vm_policy_firstboot_manifest.md` with usage, output contract, privacy/security rationale, compatibility notes, rollback guidance, and follow-up work.
 - Added `host_vm_policy_firstboot_handoff.py`, a read-only helper that composes the host/VM policy evidence bundle and receipt into JSON and Markdown firstboot/release handoff artifacts.
 - Packaged `host_vm_policy_firstboot_handoff.py` in `build_custom_iso.sh` and added static behavior coverage for approved and deferred handoff decisions.
@@ -62,6 +64,8 @@
 
 ### Security
 
+- The firstboot release-gate service refresh is additive and passive: it writes derived aggregate status and bundle manifest files after the existing release-gate command without opening sockets, changing firewall rules, approving restores, or modifying host, VM, IDS, model, dataset, approval, restore, or firstboot state.
+- The status refresh is best-effort and the bundle manifest remains fail-closed when upstream status evidence is missing, malformed, deferred, stale, or blocked.
 - The firstboot release-gate bundle manifest Markdown output is additive and passive: it renders the same aggregate manifest data as JSON, does not read raw telemetry, does not open sockets, and does not change firewall rules, services, models, datasets, approvals, restore state, or host/VM settings.
 - The firstboot release-gate bundle manifest packaging is additive and passive: it makes the helper available in custom images without enabling a new service, opening sockets, changing firewall rules, modifying firstboot state, approving restores, or touching host/VM settings, IDS models, datasets, approvals, or recovery state.
 - The firstboot release-gate status reader is passive and aggregate-only: it parses a strict quoted summary contract without sourcing shell content, rejects malformed or non-aggregate privacy scopes, and does not read raw logs, packets, captures, credentials, hostnames, usernames, secrets, model binaries, or datasets.
@@ -90,6 +94,4 @@
 - The NN IDS drift triage renderer is read-only and privacy-safe: it consumes aggregate drift evidence and does not include sensitive telemetry, credentials, host secrets, or raw captures in generated handoffs.
 - The NN IDS drift evidence emitter is read-only: it does not open network sockets, execute commands, restart services, change firewall rules, or modify host/VM state.
 - Drift failures are treated as review gates for analytical trust and model promotion, not as certain indications of malicious traffic or operational targeting.
-- The NN IDS evidence emitter is read-only: it does not open network sockets, execute commands, restart services, change firewall rules, or modify host/VM state.
-- `nn_ids_health_evidence.service` uses systemd hardening controls including `NoNewPrivileges=true`, `PrivateTmp=true`, `ProtectSystem=full`, `ProtectHome=true`, an empty capability bounding set, `ReadOnlyPaths=/opt/nnids`, and `ReadWritePaths=/var/log`.
-- `--require-pass` exits non-zero when model evidence, metric evidence, or recent health markers indicate degraded IDS posture.
+- The NN IDS evidence emitter is read-only: it does not open network sockets, execute commands, restart services...
