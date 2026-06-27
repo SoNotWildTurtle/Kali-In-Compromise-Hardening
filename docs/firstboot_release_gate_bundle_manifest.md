@@ -29,6 +29,23 @@ python3 firstboot_release_gate_bundle_manifest.py \
 
 With `--require-pass`, the command exits `7` when any required artifact is missing, the status JSON is malformed, the status component is unexpected, the status is not passing, or status validation blockers are present.
 
+## Markdown handoff report
+
+Use `--format markdown` when an operator, recovery reviewer, or release manager needs a privacy-safe handoff artifact that can be read without parsing JSON:
+
+```bash
+python3 firstboot_release_gate_bundle_manifest.py \
+  --gate-json /var/log/firstboot_release_gate.json \
+  --gate-markdown /var/log/firstboot_release_gate.md \
+  --summary /var/log/firstboot_release_gate.summary.env \
+  --status-json /var/log/firstboot_release_gate.status.json \
+  --output /var/log/firstboot_release_gate.bundle_manifest.md \
+  --format markdown \
+  --require-pass
+```
+
+The Markdown report preserves the same approval/deferred decision and `--require-pass` exit behavior as JSON output. It renders the status summary, artifact table, blockers, operator next steps, privacy exclusions, safe-default note, and rollback guidance for shift handoff or release-review comments.
+
 ## Custom ISO packaging
 
 `build_custom_iso.sh` now includes `firstboot_release_gate_bundle_manifest.py` in the core module list for both installer and live custom ISO builds. This keeps the offline release handoff helper available on hardened images alongside `firstboot_release_gate.py`, `firstboot_release_gate_status.py`, and the timer/service units that refresh aggregate firstboot release evidence.
@@ -45,11 +62,15 @@ The manifest emits JSON with:
 - Machine-readable `blockers` and `operator_next_steps`.
 - `privacy_scope`, `privacy_exclusions`, `safe_default`, and `rollback_note` fields.
 
+Markdown output preserves the same evidence contract in a human-readable form and does not add raw logs, packet captures, credentials, hostnames, usernames, secrets, model binaries, datasets, or environment identifiers.
+
 ## Design rationale
 
 Evidence bundles are useful for release handoff, but bundle tools should avoid collecting private system evidence by accident. This helper records only artifact references, sizes, and hashes. It does not parse the authoritative JSON or Markdown contents beyond hashing bytes, and it validates only the aggregate status-reader JSON.
 
 The helper does not open network sockets, execute host commands, restart services, modify firewall rules, change service state, approve restores, update firstboot state, or touch NN IDS models and datasets.
+
+The Markdown renderer is intentionally derived from the same in-memory manifest as the JSON output so release gates, recovery workflows, and human review stay aligned.
 
 ## Compatibility
 
@@ -63,8 +84,9 @@ Rollback is additive and low risk:
 
 1. Stop invoking `firstboot_release_gate_bundle_manifest.py` from release, recovery, dashboard, or ISO promotion scripts.
 2. Continue reviewing the JSON, Markdown, summary, and status artifacts individually.
-3. Remove the helper from custom ISO packaging if desired.
-4. Revert this helper, tests, docs, packaging entry, and changelog entry.
+3. Remove `--format markdown` calls and return to JSON output only if handoff reports are not needed.
+4. Remove the helper from custom ISO packaging if desired.
+5. Revert this helper, tests, docs, packaging entry, and changelog entry.
 
 No upstream firstboot manifest, NN IDS model card, release-gate JSON, release-gate Markdown, summary file, status file, host setting, VM setting, firewall rule, service state, approval, restore state, model file, or dataset is modified by this helper.
 
@@ -72,3 +94,4 @@ No upstream firstboot manifest, NN IDS model card, release-gate JSON, release-ga
 
 - Add a release-gate service option that writes `/var/log/firstboot_release_gate.status.json` after each passive timer run.
 - Add an optional dashboard view that reads the bundle manifest and displays artifact hash mismatches or missing evidence.
+- Add a release-note template that embeds the Markdown bundle manifest for signed ISO promotion handoff.
