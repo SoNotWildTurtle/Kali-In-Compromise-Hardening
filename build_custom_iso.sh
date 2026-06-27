@@ -107,6 +107,7 @@ core_modules=(
     "host_vm_policy_approval_check.py"
     "host_vm_policy_approval_check.service"
     "host_vm_policy_approval_check.timer"
+    "host_vm_policy_evidence_bundle.py"
     "host_vm_policy_restore_execute.py"
     "host_vm_policy_restore_execute.service"
     "vm_smoke_check.sh"
