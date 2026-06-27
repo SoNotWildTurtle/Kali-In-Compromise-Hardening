@@ -112,6 +112,7 @@ core_modules=(
     "host_vm_policy_firstboot_handoff.py"
     "host_vm_policy_firstboot_manifest.py"
     "firstboot_release_gate.py"
+    "firstboot_release_gate_status.py"
     "firstboot_release_gate.service"
     "firstboot_release_gate.timer"
     "host_vm_policy_restore_execute.py"
@@ -243,9 +244,13 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 SERVICE
 
-chmod +x "$INSTALL_DIR"/*.sh "$INSTALL_DIR"/*.py 2>/dev/null || true
+mkdir -p "$EXTRACT_DIR/etc/systemd/system"
+cp "$INSTALL_DIR/firstboot.service" "$EXTRACT_DIR/etc/systemd/system/firstboot.service"
+ln -sf /etc/systemd/system/firstboot.service "$EXTRACT_DIR/etc/systemd/system/multi-user.target.wants.firstboot.service"
 
 mkisofs -o "$OUT_ISO" -b isolinux/isolinux.bin -c isolinux/boot.cat \
-    -no-emul-boot -boot-load-size 4 -boot-info-table "$EXTRACT_DIR"
-isohybrid "$OUT_ISO"
+  -no-emul-boot -boot-load-size 4 -boot-info-table \
+  -J -R -V "KALI_HARDENED" "$EXTRACT_DIR"
+isohybrid "$OUT_ISO" || true
+
 echo "Custom ISO written to $OUT_ISO"
