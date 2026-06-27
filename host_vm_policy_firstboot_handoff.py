@@ -98,6 +98,13 @@ def build_index(bundle_path: Path, receipt_path: Path, receipt: Dict[str, Any]) 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Create a privacy-safe firstboot handoff from host/VM policy evidence.')
+    parser.add_argument('--attestation', default=str(evidence_bundle.COMPONENTS['policy_attestation'][0]))
+    parser.add_argument('--verify', default=str(evidence_bundle.COMPONENTS['policy_verify'][0]))
+    parser.add_argument('--restore-plan', default=str(evidence_bundle.COMPONENTS['policy_restore_plan'][0]))
+    parser.add_argument('--approval-check', default=str(evidence_bundle.COMPONENTS['policy_approval_check'][0]))
+    parser.add_argument('--ids-model-audit', default=str(evidence_bundle.COMPONENTS['nn_ids_model_audit'][0]))
+    parser.add_argument('--ids-audit-gate', default=str(evidence_bundle.COMPONENTS['nn_ids_audit_gate'][0]))
+    parser.add_argument('--ids-health-evidence', default=str(evidence_bundle.COMPONENTS['nn_ids_health_evidence'][0]))
     parser.add_argument('--bundle', default=str(DEFAULT_BUNDLE))
     parser.add_argument('--bundle-report', default=str(DEFAULT_BUNDLE_REPORT))
     parser.add_argument('--receipt', default=str(DEFAULT_RECEIPT))
