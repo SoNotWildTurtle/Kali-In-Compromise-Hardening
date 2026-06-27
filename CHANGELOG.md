@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added `host_vm_policy_evidence_bundle_receipt.py`, a passive receipt gate that converts aggregate host/VM policy evidence bundles into explicit approved/deferred JSON and Markdown handoff artifacts.
+- Added static receipt-gate coverage for approved bundles, deferred review bundles, warning-only approval behavior, missing bundle handling, release-gate exits, and privacy boundaries.
+- Added `docs/host_vm_policy_evidence_bundle_receipt.md` with usage, decision contract, privacy/security rationale, compatibility notes, rollback guidance, and follow-up work.
 - Added opt-in `--max-artifact-age-minutes` freshness gating to `nn_ids_model_card.py`, allowing release, firstboot, and recovery workflows to block stale or untimestamped NN IDS model-card evidence without exposing sensitive telemetry.
 - Added tests covering stale evidence blockers, missing timestamp blockers, Markdown freshness reporting, and privacy-safe operator actions for the NN IDS model card.
 - Updated `docs/nn_ids_model_card.md` with freshness-gate usage, output contract, compatibility notes, rollback guidance, and follow-up work.
@@ -37,7 +40,9 @@
 
 ### Security
 
-- The NN IDS model-card freshness gate is passive and privacy-safe: it uses only aggregate `generated_at` timestamps and artifact paths to fail stale or untimestamped release evidence, without reading raw packets, payloads, captures, credentials, hostnames, usernames, secrets, model binaries, raw IDS logs, or host/VM state.
+- The host/VM policy evidence receipt gate is passive and privacy-safe: it consumes aggregate bundle metadata only and emits approved/deferred decisions without embedding raw logs, captures, credentials, hostnames, usernames, secrets, or model files.
+- The receipt `--require-ready` path exits non-zero when evidence is deferred, giving release, firstboot, and recovery workflows an auditable stop condition without changing live host/VM, IDS, approval, or restore state.
+- The NN IDS model-card freshness gate is passive and privacy-safe: it uses only aggregate `generated_at` timestamps and artifact paths to fail stale or untimestamped release evidence without reading raw packets, payloads, captures, credentials, hostnames, usernames, secrets, model binaries, raw IDS logs, or host/VM state.
 - The NN IDS model card is passive and privacy-safe: it consumes only aggregate schema, health, drift, and release-receipt evidence and does not embed sensitive telemetry, raw packets, captures, credentials, hostnames, usernames, secrets, model binaries, raw IDS logs, or host/VM state.
 - The model card `--require-pass` path exits non-zero when required aggregate evidence is missing, failing, or deferred, making model promotion and release handoff auditable without changing services, timers, firewall rules, model files, datasets, host settings, or VM settings.
 - The posture release receipt is passive and privacy-safe: it consumes only checklist JSON and emits aggregate decisions/action items without embedding sensitive telemetry, credentials, hostnames, usernames, secrets, model files, or raw IDS logs.
