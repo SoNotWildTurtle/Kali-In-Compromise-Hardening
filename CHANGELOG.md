@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added `--format markdown` to `firstboot_release_gate_status.py`, giving operators, dashboards, recovery bundles, and shift handoffs a privacy-safe readable status artifact derived from the same validated aggregate summary used for text and JSON.
+- Added Markdown status coverage for approved and deferred firstboot release-gate summaries, including validation blockers, safety/privacy notes, rollback guidance, and `--require-pass` exit behavior.
 - Wired `firstboot_release_gate.service` to refresh `/var/log/firstboot_release_gate.status.json`, `/var/log/firstboot_release_gate.bundle_manifest.json`, and `/var/log/firstboot_release_gate.bundle_manifest.md` after the passive release-gate artifacts are generated, keeping hourly handoff evidence coherent for dashboards, release review, and recovery bundles.
 - Extended `tests/test_firstboot_release_gate_timer_static.sh` to compile the status and bundle helpers and verify the service emits status JSON plus both JSON and Markdown bundle manifests while preserving sandboxing and passive timer behavior.
 - Added `--format markdown` to `firstboot_release_gate_bundle_manifest.py`, giving operators a privacy-safe readable bundle handoff report with status summary, artifact hashes, blockers, next steps, safety notes, and rollback guidance while preserving the existing JSON default and `--require-pass` behavior.
@@ -64,6 +66,8 @@
 
 ### Security
 
+- The firstboot release-gate status Markdown output is additive and passive: it renders validated aggregate summary fields only and does not change host, VM, firewall, service, model, dataset, approval, restore, or firstboot state.
+- The Markdown output preserves the existing fail-closed status-reader behavior for malformed summaries, privacy-scope mismatches, deferred gate state, stale/skewed evidence, and `--require-pass` exits.
 - The firstboot release-gate service refresh is additive and passive: it writes derived aggregate status and bundle manifest files after the existing release-gate command without opening sockets, changing firewall rules, approving restores, or modifying host, VM, IDS, model, dataset, approval, restore, or firstboot state.
 - The status refresh is best-effort and the bundle manifest remains fail-closed when upstream status evidence is missing, malformed, deferred, stale, or blocked.
 - The firstboot release-gate bundle manifest Markdown output is additive and passive: it renders the same aggregate manifest data as JSON, does not read raw telemetry, does not open sockets, and does not change firewall rules, services, models, datasets, approvals, restore state, or host/VM settings.
@@ -89,11 +93,4 @@
 - The posture release checklist is passive and privacy-safe: it consumes only aggregate manifest metadata and emits operator actions without embedding sensitive telemetry, credentials, hostnames, usernames, secrets, or raw IDS logs.
 - The posture bundle freshness gate is passive and privacy-safe: it uses only each evidence artifact's aggregate `generated_at` timestamp and never reads sensitive telemetry, credentials, hostnames, usernames, secrets, or raw IDS logs.
 - The Markdown posture bundle handoff is generated from aggregate manifest evidence only; it does not embed sensitive telemetry, credentials, hostnames, usernames, secrets, or raw IDS logs.
-- The NN IDS posture bundle manifest is read-only and privacy-safe: it records only artifact paths, SHA-256 digests, aggregate statuses, and control IDs, without embedding sensitive telemetry, credentials, hostnames, usernames, raw captures, or secrets.
-- The posture bundle `--require-pass` path exits non-zero when required health, drift, or triage artifacts are missing or failing, making release gates auditable without changing firewall, service, model, dataset, or host/VM state.
-- The NN IDS drift triage renderer is read-only and privacy-safe: it consumes aggregate drift evidence and does not include sensitive telemetry, credentials, host secrets, or raw captures in generated handoffs.
-- The NN IDS drift evidence emitter is read-only: it does not open network sockets, execute commands, restart services, change firewall rules, or modify host/VM state.
-- Drift failures are treated as review gates for analytical trust and model promotion, not as certain indications of malicious traffic or operational targeting.
-- The NN IDS evidence emitter is read-only: it does not open network sockets, execute commands, restart services, change firewall rules, or modify host/VM state.
-- `nn_ids_health_evidence.service` uses systemd hardening controls including `NoNewPrivileges=true`, `PrivateTmp=true`, `ProtectSystem=full`, `ProtectHome=true`, an empty capability bounding set, `ReadOnlyPaths=/opt/nnids`, and `ReadWritePaths=/var/log`.
-- `--require-pass` exits non-zero when model evidence, metric evidence, or recent health markers indicate degraded IDS posture.
+- The NN IDS posture bundle manifest is read-only and privacy-safe: it records aggregate posture evidence metadata, SHA-256 hashes, warnings, blockers, and release-gate state without embedding sensitive telemetry, credentials, hostnames, usernames, secrets, or raw IDS logs.
