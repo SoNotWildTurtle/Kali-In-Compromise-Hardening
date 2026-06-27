@@ -150,8 +150,73 @@ def operator_next_steps(blockers: list[str]) -> list[str]:
     return sorted(set(actions))
 
 
-def write_manifest(path: Path, manifest: Dict[str, Any]) -> None:
+def render_markdown(manifest: Dict[str, Any]) -> str:
+    lines = [
+        '# Firstboot release-gate bundle manifest',
+        '',
+        f"- Decision: `{manifest['decision']}`",
+        f"- Release gate: `{manifest['release_gate']}`",
+        f"- Created UTC: `{manifest['created_utc']}`",
+        f"- Privacy scope: `{manifest['privacy_scope']}`",
+        '',
+        '## Status summary',
+        '',
+    ]
+    status_summary = manifest.get('status_summary', {})
+    for key in (
+        'component',
+        'decision',
+        'release_gate',
+        'source_created_utc',
+        'artifact_count',
+        'blocker_count',
+        'stale_or_skewed_count',
+    ):
+        lines.append(f"- {key}: `{status_summary.get(key, 'unknown')}`")
+    lines.extend(['', '## Artifacts', ''])
+    lines.append('| Name | Required | Exists | Size bytes | SHA-256 |')
+    lines.append('| --- | --- | --- | ---: | --- |')
+    for artifact in manifest.get('artifacts', []):
+        sha256 = artifact.get('sha256') or 'missing'
+        size = artifact.get('size_bytes', 'missing')
+        lines.append(
+            '| {name} | {required} | {exists} | {size} | `{sha}` |'.format(
+                name=artifact.get('name', 'unknown'),
+                required=str(artifact.get('required', False)).lower(),
+                exists=str(artifact.get('exists', False)).lower(),
+                size=size,
+                sha=sha256,
+            )
+        )
+    blockers = manifest.get('blockers', [])
+    lines.extend(['', '## Blockers', ''])
+    if blockers:
+        lines.extend(f'- `{blocker}`' for blocker in blockers)
+    else:
+        lines.append('- None')
+    lines.extend(['', '## Operator next steps', ''])
+    for step in manifest.get('operator_next_steps', []):
+        lines.append(f'- {step}')
+    lines.extend([
+        '',
+        '## Privacy and safety',
+        '',
+        f"- Safe default: {manifest['safe_default']}",
+        f"- Privacy exclusions: {', '.join(manifest['privacy_exclusions'])}",
+        '',
+        '## Rollback',
+        '',
+        manifest['rollback_note'],
+        '',
+    ])
+    return '\n'.join(lines)
+
+
+def write_manifest(path: Path, manifest: Dict[str, Any], output_format: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if output_format == 'markdown':
+        path.write_text(render_markdown(manifest), encoding='utf-8')
+        return
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n', encoding='utf-8')
 
 
@@ -163,6 +228,12 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument('--status-json', default=str(DEFAULT_STATUS_JSON))
     parser.add_argument('--output', default=str(DEFAULT_OUTPUT))
     parser.add_argument(
+        '--format',
+        choices=('json', 'markdown'),
+        default='json',
+        help='Write the bundle manifest as machine-readable JSON or operator-friendly Markdown.',
+    )
+    parser.add_argument(
         '--require-pass',
         action='store_true',
         help='Exit non-zero unless the manifest references complete passing evidence.',
@@ -173,8 +244,13 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
     manifest = build_manifest(args)
-    write_manifest(Path(args.output), manifest)
-    print(json.dumps({'decision': manifest['decision'], 'ok': manifest['ok'], 'output': args.output}, sort_keys=True))
+    write_manifest(Path(args.output), manifest, args.format)
+    print(
+        json.dumps(
+            {'decision': manifest['decision'], 'format': args.format, 'ok': manifest['ok'], 'output': args.output},
+            sort_keys=True,
+        )
+    )
     return 0 if manifest['ok'] or not args.require_pass else 7
 
 
