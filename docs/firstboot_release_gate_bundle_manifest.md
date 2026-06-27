@@ -29,6 +29,20 @@ python3 firstboot_release_gate_bundle_manifest.py \
 
 With `--require-pass`, the command exits `7` when any required artifact is missing, the status JSON is malformed, the status component is unexpected, the status is not passing, or status validation blockers are present.
 
+## Timer refresh integration
+
+`firstboot_release_gate.service` now refreshes the status-reader JSON and both bundle manifest formats immediately after the passive release-gate JSON, Markdown, and summary artifacts are written:
+
+```text
+/var/log/firstboot_release_gate.status.json
+/var/log/firstboot_release_gate.bundle_manifest.json
+/var/log/firstboot_release_gate.bundle_manifest.md
+```
+
+The status refresh is best-effort so missing or deferred upstream evidence does not prevent the bundle manifest from being written. In that case, the bundle manifest records explicit blockers such as missing or malformed status evidence and keeps `release_gate` at `stop` until the upstream artifacts pass.
+
+This integration keeps the hourly handoff evidence set coherent for dashboards, release reviewers, and recovery operators without opening sockets, changing firewall rules, restarting services beyond the existing timer unit, approving restores, or modifying host, VM, IDS, model, dataset, approval, restore, or firstboot state.
+
 ## Markdown handoff report
 
 Use `--format markdown` when an operator, recovery reviewer, or release manager needs a privacy-safe handoff artifact that can be read without parsing JSON:
@@ -76,6 +90,8 @@ The Markdown renderer is intentionally derived from the same in-memory manifest 
 
 The helper uses only the Python standard library and is safe for Kali/Debian Python 3 environments. It does not require root privileges, systemd, network access, or external packages.
 
+The service refresh is additive to the existing oneshot timer workflow and writes only additional aggregate files under `/var/log` after the main release-gate command completes.
+
 The custom ISO packaging change preserves existing installer/live modes and only adds the helper to the existing copy list.
 
 ## Rollback
@@ -86,12 +102,13 @@ Rollback is additive and low risk:
 2. Continue reviewing the JSON, Markdown, summary, and status artifacts individually.
 3. Remove `--format markdown` calls and return to JSON output only if handoff reports are not needed.
 4. Remove the helper from custom ISO packaging if desired.
-5. Revert this helper, tests, docs, packaging entry, and changelog entry.
+5. Revert the `ExecStartPost` lines in `firstboot_release_gate.service` if automatic status and bundle refresh is not wanted.
+6. Revert this helper, tests, docs, packaging entry, and changelog entry.
 
 No upstream firstboot manifest, NN IDS model card, release-gate JSON, release-gate Markdown, summary file, status file, host setting, VM setting, firewall rule, service state, approval, restore state, model file, or dataset is modified by this helper.
 
 ## Follow-up work
 
-- Add a release-gate service option that writes `/var/log/firstboot_release_gate.status.json` after each passive timer run.
-- Add an optional dashboard view that reads the bundle manifest and displays artifact hash mismatches or missing evidence.
+- Add a dashboard view that reads the bundle manifest and displays artifact hash mismatches or missing evidence.
 - Add a release-note template that embeds the Markdown bundle manifest for signed ISO promotion handoff.
+- Add an optional timer override documenting how operators can change refresh cadence without editing packaged unit files.
