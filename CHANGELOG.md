@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added `firstboot_release_gate.py`, a passive gate that composes host/VM firstboot manifest readiness and NN IDS model-card readiness into one privacy-safe JSON/Markdown release decision for ISO promotion, firstboot handoff, and recovery review.
+- Packaged `firstboot_release_gate.py` in `build_custom_iso.sh` and added static coverage for approved gates, deferred NN IDS gates, missing evidence, invalid freshness thresholds, Markdown rendering, privacy text, and packaging regression checks.
+- Added `docs/firstboot_release_gate.md` with usage, output contract, threat-model rationale, compatibility notes, rollback guidance, and follow-up work.
 - Added opt-in `--max-artifact-age-minutes` freshness gating to `host_vm_policy_firstboot_manifest.py`, allowing firstboot and release reviewers to block stale or clock-skewed host/VM handoff artifacts without reading raw telemetry or changing host/VM state.
 - Added `mtime_utc`, `age_seconds`, and `freshness_policy` fields to firstboot handoff manifests, plus Markdown freshness reporting and static coverage for passing freshness, stale artifact blockers, invalid threshold input, and unchanged default behavior.
 - Added `host_vm_policy_firstboot_manifest.py`, a passive manifest helper that records firstboot handoff artifact presence, sizes, SHA-256 digests, decisions, blockers, rollback guidance, and operator next steps.
@@ -49,6 +52,8 @@
 
 ### Security
 
+- The firstboot release gate is passive and privacy-safe: it consumes only the host/VM firstboot manifest and NN IDS model-card aggregate evidence, then emits a combined go/no-go decision without reading raw packets, captures, logs, credentials, hostnames, usernames, secrets, model binaries, datasets, or live host/VM state.
+- The release gate `--require-pass` path exits non-zero when either host/VM firstboot handoff or NN IDS model-card readiness is missing, malformed, stale, or failing, giving ISO promotion and firstboot handoff workflows an auditable stop condition without changing services, timers, firewall rules, model artifacts, datasets, host settings, VM settings, approvals, or restore state.
 - The firstboot manifest freshness gate is passive and privacy-safe: it uses only artifact modification times, paths, sizes, and hashes to reject stale or clock-skewed handoff evidence without opening sockets, executing commands, restarting services, changing firewall rules, or modifying host/VM, IDS, approval, evidence, or recovery state.
 - The firstboot manifest helper is passive and privacy-safe: it records paths, sizes, hashes, and aggregate readiness metadata without embedding raw telemetry, environment identifiers, credentials, private operator data, model files, or datasets.
 - The manifest `--require-ready` path exits non-zero when required handoff artifacts are missing, malformed, deferred, stale, or clock-skewed, giving release and firstboot promotion workflows an auditable stop condition without modifying live host, VM, IDS, approval, or recovery state.
