@@ -155,10 +155,50 @@ def render_text(status: Dict[str, object]) -> str:
     return '\n'.join(lines) + '\n'
 
 
+def render_markdown(status: Dict[str, object]) -> str:
+    validation_blockers = status.get('validation_blockers') or []
+    operator_next_steps = status.get('operator_next_steps') or []
+    lines = [
+        '# Firstboot release-gate status',
+        '',
+        '| Field | Value |',
+        '| --- | --- |',
+        f"| Decision | `{status['decision']}` |",
+        f"| Release gate | `{status['release_gate']}` |",
+        f"| Source decision | `{status['source_decision']}` |",
+        f"| Source release gate | `{status['source_release_gate']}` |",
+        f"| Source created UTC | `{status['source_created_utc']}` |",
+        f"| Artifact count | `{status['artifact_count']}` |",
+        f"| Blocker count | `{status['blocker_count']}` |",
+        f"| Stale or skewed count | `{status['stale_or_skewed_count']}` |",
+        '',
+        '## Validation blockers',
+    ]
+    if validation_blockers:
+        lines.extend(f'- `{blocker}`' for blocker in validation_blockers)
+    else:
+        lines.append('- none')
+    lines.extend(['', '## Operator next steps'])
+    lines.extend(f'- {step}' for step in operator_next_steps)
+    lines.extend([
+        '',
+        '## Safety and privacy',
+        '',
+        f"- {status['safe_default']}",
+        f"- {status['privacy_note']}",
+        '',
+        '## Rollback',
+        '',
+        '- Stop consuming this Markdown status report and use the authoritative firstboot release-gate JSON/Markdown artifacts directly.',
+        '- No host setting, VM setting, firewall rule, service state, approval, restore state, model file, dataset, or firstboot state is changed by this reader.',
+    ])
+    return '\n'.join(lines) + '\n'
+
+
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Read a passive aggregate firstboot release-gate summary artifact.')
     parser.add_argument('--summary', default=str(DEFAULT_SUMMARY), help='Path to firstboot_release_gate.summary.env.')
-    parser.add_argument('--format', choices=('json', 'text'), default='text')
+    parser.add_argument('--format', choices=('json', 'markdown', 'text'), default='text')
     parser.add_argument('--require-pass', action='store_true', help='Exit non-zero unless the aggregate summary is valid and passing.')
     return parser.parse_args(argv)
 
@@ -168,6 +208,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     status = build_status(Path(args.summary))
     if args.format == 'json':
         print(json.dumps(status, indent=2, sort_keys=True))
+    elif args.format == 'markdown':
+        print(render_markdown(status), end='')
     else:
         print(render_text(status), end='')
     return 0 if status['ok'] or not args.require_pass else 7

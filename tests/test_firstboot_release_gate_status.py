@@ -100,3 +100,40 @@ def test_status_reader_text_mode_is_handoff_friendly(tmp_path: Path) -> None:
     assert "decision: approved" in result.stdout
     assert "validation_blockers:" in result.stdout
     assert "- none" in result.stdout
+
+
+def test_status_reader_markdown_mode_is_manager_handoff_friendly(tmp_path: Path) -> None:
+    summary = tmp_path / "firstboot_release_gate.summary.env"
+    write_summary(summary)
+
+    result = run_status(summary, "--format", "markdown", "--require-pass")
+
+    assert result.returncode == 0, result.stderr
+    assert "# Firstboot release-gate status" in result.stdout
+    assert "| Decision | `approved` |" in result.stdout
+    assert "| Release gate | `pass` |" in result.stdout
+    assert "## Validation blockers" in result.stdout
+    assert "- none" in result.stdout
+    assert "## Safety and privacy" in result.stdout
+    assert "raw logs" in result.stdout
+    assert "## Rollback" in result.stdout
+
+
+def test_status_reader_markdown_mode_preserves_deferred_blockers(tmp_path: Path) -> None:
+    summary = tmp_path / "firstboot_release_gate.summary.env"
+    write_summary(
+        summary,
+        FIRSTBOOT_RELEASE_GATE_OK="false",
+        FIRSTBOOT_RELEASE_GATE_DECISION="deferred",
+        FIRSTBOOT_RELEASE_GATE_STATUS="stop",
+        FIRSTBOOT_RELEASE_GATE_BLOCKER_COUNT="1",
+        FIRSTBOOT_RELEASE_GATE_STALE_OR_SKEWED_COUNT="1",
+    )
+
+    result = run_status(summary, "--format", "markdown", "--require-pass")
+
+    assert result.returncode == 7
+    assert "| Decision | `deferred` |" in result.stdout
+    assert "| Release gate | `stop` |" in result.stdout
+    assert "| Blocker count | `1` |" in result.stdout
+    assert "Regenerate stale or clock-skewed firstboot release evidence" in result.stdout

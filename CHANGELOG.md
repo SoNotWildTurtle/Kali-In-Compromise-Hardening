@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added `--format markdown` to `firstboot_release_gate_status.py`, giving operators, dashboards, recovery bundles, and shift handoffs a privacy-safe readable status artifact derived from the same validated aggregate summary used for text and JSON.
+- Added Markdown status coverage for approved and deferred firstboot release-gate summaries, including validation blockers, safety/privacy notes, rollback guidance, and `--require-pass` exit behavior.
 - Wired `firstboot_release_gate.service` to refresh `/var/log/firstboot_release_gate.status.json`, `/var/log/firstboot_release_gate.bundle_manifest.json`, and `/var/log/firstboot_release_gate.bundle_manifest.md` after the passive release-gate artifacts are generated, keeping hourly handoff evidence coherent for dashboards, release review, and recovery bundles.
 - Extended `tests/test_firstboot_release_gate_timer_static.sh` to compile the status and bundle helpers and verify the service emits status JSON plus both JSON and Markdown bundle manifests while preserving sandboxing and passive timer behavior.
 - Added `--format markdown` to `firstboot_release_gate_bundle_manifest.py`, giving operators a privacy-safe readable bundle handoff report with status summary, artifact hashes, blockers, next steps, safety notes, and rollback guidance while preserving the existing JSON default and `--require-pass` behavior.
@@ -64,6 +66,8 @@
 
 ### Security
 
+- The firstboot release-gate status Markdown output is additive and passive: it renders validated aggregate summary fields only and does not change host, VM, firewall, service, model, dataset, approval, restore, or firstboot state.
+- The Markdown output preserves the existing fail-closed status-reader behavior for malformed summaries, privacy-scope mismatches, deferred gate state, stale/skewed evidence, and `--require-pass` exits.
 - The firstboot release-gate service refresh is additive and passive: it writes derived aggregate status and bundle manifest files after the existing release-gate command without opening sockets, changing firewall rules, approving restores, or modifying host, VM, IDS, model, dataset, approval, restore, or firstboot state.
 - The status refresh is best-effort and the bundle manifest remains fail-closed when upstream status evidence is missing, malformed, deferred, stale, or blocked.
 - The firstboot release-gate bundle manifest Markdown output is additive and passive: it renders the same aggregate manifest data as JSON, does not read raw telemetry, does not open sockets, and does not change firewall rules, services, models, datasets, approvals, restore state, or host/VM settings.
