@@ -4,6 +4,7 @@
 
 ### Added
 
+- Packaged `host_vm_policy_evidence_bundle_receipt.py` in `build_custom_iso.sh` and added a static packaging regression check so custom Kali images include the read-only receipt gate.
 - Added `host_vm_policy_evidence_bundle_receipt.py`, a passive receipt gate that converts aggregate host/VM policy evidence bundles into explicit approved/deferred JSON and Markdown handoff artifacts.
 - Added static receipt-gate coverage for approved bundles, deferred review bundles, warning-only approval behavior, missing bundle handling, release-gate exits, and privacy boundaries.
 - Added `docs/host_vm_policy_evidence_bundle_receipt.md` with usage, decision contract, privacy/security rationale, compatibility notes, rollback guidance, and follow-up work.
