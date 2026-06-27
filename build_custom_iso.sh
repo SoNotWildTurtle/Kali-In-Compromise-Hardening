@@ -111,6 +111,7 @@ core_modules=(
     "host_vm_policy_evidence_bundle_receipt.py"
     "host_vm_policy_firstboot_handoff.py"
     "host_vm_policy_firstboot_manifest.py"
+    "firstboot_release_gate.py"
     "host_vm_policy_restore_execute.py"
     "host_vm_policy_restore_execute.service"
     "vm_smoke_check.sh"
