@@ -24,6 +24,8 @@ assert_no_timer_command_token() {
 }
 
 python3 -m py_compile firstboot_release_gate.py
+python3 -m py_compile firstboot_release_gate_status.py
+python3 -m py_compile firstboot_release_gate_bundle_manifest.py
 bash -n build_custom_iso.sh
 bash -n firstboot.sh
 
@@ -49,6 +51,9 @@ assert_file_contains firstboot_release_gate.service 'ReadWritePaths=/var/log'
 assert_file_contains firstboot_release_gate.service '--max-artifact-age-minutes 240'
 assert_file_contains firstboot_release_gate.service '--output /var/log/firstboot_release_gate.json'
 assert_file_contains firstboot_release_gate.service '--markdown /var/log/firstboot_release_gate.md'
+assert_file_contains firstboot_release_gate.service 'firstboot_release_gate_status.py --summary /var/log/firstboot_release_gate.summary.env --format json > /var/log/firstboot_release_gate.status.json || true'
+assert_file_contains firstboot_release_gate.service 'firstboot_release_gate_bundle_manifest.py --gate-json /var/log/firstboot_release_gate.json --gate-markdown /var/log/firstboot_release_gate.md --summary /var/log/firstboot_release_gate.summary.env --status-json /var/log/firstboot_release_gate.status.json --output /var/log/firstboot_release_gate.bundle_manifest.json'
+assert_file_contains firstboot_release_gate.service 'firstboot_release_gate_bundle_manifest.py --gate-json /var/log/firstboot_release_gate.json --gate-markdown /var/log/firstboot_release_gate.md --summary /var/log/firstboot_release_gate.summary.env --status-json /var/log/firstboot_release_gate.status.json --output /var/log/firstboot_release_gate.bundle_manifest.md --format markdown'
 
 assert_file_contains firstboot_release_gate.timer 'OnBootSec=15min'
 assert_file_contains firstboot_release_gate.timer 'OnUnitActiveSec=1h'
