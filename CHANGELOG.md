@@ -50,7 +50,7 @@
 - Updated `docs/nn_ids_model_card.md` with freshness-gate usage, output contract, compatibility notes, rollback guidance, and follow-up work.
 - Added `nn_ids_model_card.py`, a passive privacy-safe model card generator that combines feature-schema, health, drift, and release-receipt evidence into JSON or Markdown release-review artifacts.
 - Added `tests/test_nn_ids_model_card.py` to cover passing model cards, failed drift/deferred receipt blockers, missing-artifact blockers, Markdown rendering, privacy text, rollback text, and `--require-pass` behavior.
-- Added `docs/nn_ids_model_card.md` with usage, schema contract, threat-model rationale, compatibility notes, and follow-up work.
+- Added `docs/nn_ids_model_card.md` with usage, schema contract, threat-model rationale, compatibility notes, rollback guidance, and follow-up work.
 - Added `nn_ids_posture_release_receipt.py`, a passive privacy-safe receipt generator that converts checklist JSON into explicit approved/deferred release, firstboot, or recovery handoff artifacts with action items and rollback guidance.
 - Added `tests/test_nn_ids_posture_release_receipt.py` to cover approved receipts, deferred receipts, Markdown rendering, `--require-ready`, inferred failed items, privacy text, and rollback contracts.
 - Added `docs/nn_ids_posture_release_receipt.md` with usage, schema contract, threat-model rationale, compatibility notes, rollback guidance, and follow-up work.
