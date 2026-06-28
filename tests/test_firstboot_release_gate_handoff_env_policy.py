@@ -137,6 +137,44 @@ def test_env_policy_markdown_includes_privacy_and_rollback(tmp_path: Path) -> No
     assert 'Rollback' in markdown
 
 
+def test_env_policy_writes_summary_sidecar(tmp_path: Path) -> None:
+    summary = tmp_path / 'status.summary.env'
+    output = tmp_path / 'policy.json'
+    sidecar = tmp_path / 'policy.summary.env'
+    write_summary(summary)
+
+    subprocess.run(
+        [
+            sys.executable,
+            'firstboot_release_gate_handoff_env_policy.py',
+            '--input',
+            str(summary),
+            '--format',
+            'json',
+            '--output',
+            str(output),
+            '--summary',
+            str(sidecar),
+            '--require-pass',
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(output.read_text(encoding='utf-8'))
+    env = sidecar.read_text(encoding='utf-8')
+    assert payload['decision'] == 'approved'
+    assert "FIRSTBOOT_HANDOFF_ENV_POLICY_OK='1'" in env
+    assert "FIRSTBOOT_HANDOFF_ENV_POLICY_DECISION='approved'" in env
+    assert "FIRSTBOOT_HANDOFF_ENV_POLICY_RELEASE_GATE='pass'" in env
+    assert "FIRSTBOOT_HANDOFF_ENV_POLICY_BLOCKER_COUNT='0'" in env
+    assert "FIRSTBOOT_HANDOFF_ENV_POLICY_BLOCKERS='none'" in env
+    assert "FIRSTBOOT_HANDOFF_ENV_POLICY_TOTAL_ARTIFACTS='4'" in env
+    assert 'raw telemetry' not in env
+    assert 'packet' not in env.lower()
+
+
 def test_env_policy_static_packaging_service_and_docs_contracts() -> None:
     subprocess.run([sys.executable, '-m', 'py_compile', 'firstboot_release_gate_handoff_env_policy.py'], check=True)
     docs = Path('docs/firstboot_release_gate_handoff_env_policy.md').read_text(encoding='utf-8')
@@ -144,12 +182,17 @@ def test_env_policy_static_packaging_service_and_docs_contracts() -> None:
     build = Path('build_custom_iso.sh').read_text(encoding='utf-8')
     service = Path('firstboot_release_gate.service').read_text(encoding='utf-8')
     assert '--require-pass' in docs
+    assert '--summary' in docs
+    assert 'summary sidecar' in docs.lower()
     assert 'aggregate-only' in docs
     assert 'summary.env' in docs
     assert 'rollback' in docs.lower()
     assert 'firstboot_release_gate_handoff_env_policy.py' in changelog
+    assert 'summary env' in changelog
     assert 'firstboot_release_gate_handoff_env_policy.py' in build
     assert 'firstboot_release_gate.handoff_status_reader.summary.env' in service
     assert 'firstboot_release_gate.handoff_env_policy.json' in service
     assert 'firstboot_release_gate.handoff_env_policy.md' in service
+    assert 'firstboot_release_gate.handoff_env_policy.summary.env' in service
+    assert '--summary /var/log/firstboot_release_gate.handoff_env_policy.summary.env' in service
     assert '--format markdown' in service
