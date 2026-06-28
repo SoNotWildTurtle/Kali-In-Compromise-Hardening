@@ -51,6 +51,12 @@ The manifest helper records the expected firstboot release-gate artifact set for
 
 It does not hash, read, or embed those artifacts directly. It keeps the manifest aggregate-only so downstream dashboards and release gates can check completeness without exposing raw telemetry or sensitive environment details.
 
+## Manifest smoke validation
+
+`firstboot_final_readiness_manifest_smoke.py` is an additive passive smoke gate for the final-readiness manifest `.summary.env` sidecar. It parses the quoted `FIRSTBOOT_FINAL_READINESS_MANIFEST_*` contract without sourcing it, confirms the manifest helper stayed aggregate-only and read-only, verifies approved/pass/deferred/stop consistency, checks blocker and expected-artifact counts, and emits JSON, Markdown, and optional `FIRSTBOOT_FINAL_READINESS_MANIFEST_SMOKE_*` summary evidence.
+
+The manifest smoke helper fails closed when the manifest summary is missing, malformed, privacy-scope mismatched, marked pass while failed, missing blocker details, missing expected-artifact counts, or inconsistent with the final-readiness manifest component identity. This gives release jobs and operator dashboards a stable sidecar contract before trusting the manifest layer.
+
 ## Approval contract
 
 The helper approves only when upstream smoke evidence is approved, passing, aggregate-only, blocker-free, and read-only by contract. Missing, malformed, privacy-mismatched, or deferred evidence fails closed with a `deferred` decision and `stop` release gate.
@@ -58,6 +64,8 @@ The helper approves only when upstream smoke evidence is approved, passing, aggr
 The smoke helper approves only when the final-readiness summary itself is approved, passing, aggregate-only, blocker-free, backed by at least one upstream artifact, and internally consistent. It does not promote, merge, approve restore execution, change system state, or override the underlying final-readiness decision.
 
 The manifest helper approves only when final-readiness smoke evidence is approved, passing, aggregate-only, blocker-free, read-only by contract, and backed by at least one upstream artifact. Missing, malformed, privacy-mismatched, blocker-inconsistent, or artifact-empty evidence fails closed with `deferred` and `stop`.
+
+The manifest smoke helper approves only when final-readiness manifest evidence is approved, passing, aggregate-only, blocker-free, read-only by contract, and backed by a non-empty expected artifact list. Missing, malformed, privacy-mismatched, blocker-inconsistent, or expected-artifact-empty evidence fails closed with `deferred` and `stop`.
 
 ## Firstboot wiring
 
@@ -75,6 +83,12 @@ The service now also refreshes final-readiness manifest JSON, Markdown, and `.su
 - `/var/log/firstboot_release_gate.final_readiness_manifest.md`
 - `/var/log/firstboot_release_gate.final_readiness_manifest.summary.env`
 
+The service also refreshes final-readiness manifest smoke JSON, Markdown, and `.summary.env` artifacts:
+
+- `/var/log/firstboot_release_gate.final_readiness_manifest_smoke.json`
+- `/var/log/firstboot_release_gate.final_readiness_manifest_smoke.md`
+- `/var/log/firstboot_release_gate.final_readiness_manifest_smoke.summary.env`
+
 ## Rollback
 
 Rollback is removal of this optional helper from packaging and firstboot service refresh. The upstream env-policy smoke JSON, Markdown, and `.summary.env` evidence remain authoritative.
@@ -83,6 +97,8 @@ Rollback for the smoke helper is removal of `firstboot_final_readiness_smoke.py`
 
 rollback for the manifest helper is removal of `firstboot_final_readiness_manifest.py` from packaging and removal of the final-readiness manifest `ExecStartPost=` lines from `firstboot_release_gate.service`. The final-readiness and final-readiness smoke JSON, Markdown, and `.summary.env` artifacts remain authoritative.
 
+rollback for the manifest smoke helper is removal of `firstboot_final_readiness_manifest_smoke.py` from packaging and removal of the final-readiness manifest smoke `ExecStartPost=` lines from `firstboot_release_gate.service`. The final-readiness manifest JSON, Markdown, and `.summary.env` artifacts remain authoritative.
+
 ## Security notes
 
 This is a read-only aggregate helper. It does not change networking, firewall rules, host settings, VM settings, datasets, model files, approval state, restore state, credentials, or persistence. The safe default is deferred/stop when evidence is incomplete or inconsistent.
@@ -90,3 +106,5 @@ This is a read-only aggregate helper. It does not change networking, firewall ru
 The smoke helper is also read-only and aggregate-only. It does not source shell content, open sockets, inspect raw telemetry, read model binaries, mutate `/var/log` inputs, alter services, change firewall state, approve restores, or modify host/VM settings. Its safe default is deferred/stop when the final-readiness sidecar is incomplete, malformed, privacy-mismatched, or internally inconsistent.
 
 The manifest helper is read-only and aggregate-only. It does not source shell content, open sockets, inspect raw telemetry, read model binaries, mutate `/var/log` inputs, alter services, change firewall state, approve restores, modify host/VM settings, or embed sensitive environment data. Its safe default is deferred/stop when the final-readiness smoke sidecar is incomplete, malformed, privacy-mismatched, blocker-inconsistent, or artifact-empty.
+
+The manifest smoke helper is read-only and aggregate-only. It does not source shell content, open sockets, inspect raw telemetry, read model binaries, mutate `/var/log` inputs, alter services, change firewall state, approve restores, modify host/VM settings, or embed sensitive environment data. Its safe default is deferred/stop when the final-readiness manifest sidecar is incomplete, malformed, privacy-mismatched, blocker-inconsistent, or expected-artifact-empty.

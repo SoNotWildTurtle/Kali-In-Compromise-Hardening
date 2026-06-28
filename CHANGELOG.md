@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added `firstboot_final_readiness_manifest_smoke.py`, a passive aggregate-only smoke gate for the final-readiness manifest `.summary.env` sidecar that validates the quoted `FIRSTBOOT_FINAL_READINESS_MANIFEST_*` contract without sourcing shell content.
+- Packaged the final-readiness manifest smoke helper, wired `firstboot_release_gate.service` to refresh JSON, Markdown, and `.summary.env` manifest smoke artifacts, and documented approval, rollback, privacy, safe-default behavior, and static coverage.
 - Added `firstboot_final_readiness_manifest.py`, a passive aggregate-only manifest helper for the final-readiness smoke `.summary.env` sidecar that validates the quoted `FIRSTBOOT_FINAL_READINESS_SMOKE_*` contract without sourcing shell content.
 - Packaged the final-readiness manifest helper, wired `firstboot_release_gate.service` to refresh JSON, Markdown, and `.summary.env` manifest artifacts, and documented approval, rollback, privacy, and safe-default behavior.
 - Added `firstboot_final_readiness_smoke.py`, a passive aggregate-only smoke gate for the final-readiness `.summary.env` sidecar that validates the quoted `FIRSTBOOT_FINAL_READINESS_*` contract without sourcing shell content.
@@ -76,6 +78,8 @@
 
 ### Security
 
+- The final-readiness manifest smoke helper is additive and passive: it validates only the quoted aggregate final-readiness manifest summary sidecar, emits derived smoke evidence, and does not source shell content, inspect raw telemetry, open sockets, change firewall rules, mutate services, approve restores, or modify host/VM state.
+- The manifest smoke helper `--require-pass` path exits non-zero when final-readiness manifest evidence is missing, malformed, privacy-scope mismatched, internally inconsistent, blocker-inconsistent, expected-artifact-empty, or marked pass while failed.
 - The final-readiness manifest helper is additive and passive: it validates only the quoted aggregate final-readiness smoke summary sidecar, emits derived manifest evidence, and does not source shell content, inspect raw telemetry, open sockets, change firewall rules, mutate services, approve restores, or modify host/VM state.
 - The manifest helper `--require-pass` path exits non-zero when final-readiness smoke evidence is missing, malformed, privacy-scope mismatched, internally inconsistent, blocker-inconsistent, artifact-empty, or marked pass while failed.
 - The final-readiness smoke gate is additive and passive: it validates only the quoted aggregate final-readiness summary sidecar, emits derived smoke evidence, and does not source shell content, inspect raw telemetry, open sockets, change firewall rules, mutate services, approve restores, or modify host/VM state.
