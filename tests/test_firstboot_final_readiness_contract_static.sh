@@ -26,7 +26,7 @@ require_text "must not read raw packets"
 require_text "Rollback"
 require_text "--require-pass"
 
-if grep -Eiq -- 'force-merge|bypass protections|raw packets.*emit|credentials.*emit' "$DOC"; then
+if grep -Eiq -- 'force-merge|bypass protections|emit.*raw packets|emit.*credentials' "$DOC"; then
     echo "Unsafe release or privacy wording found in $DOC" >&2
     exit 1
 fi
