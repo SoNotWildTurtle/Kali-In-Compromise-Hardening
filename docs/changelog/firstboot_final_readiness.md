@@ -19,5 +19,5 @@
 
 ## Rollback
 
-- Remove `firstboot_final_readiness.py` from packaging and remove the final readiness `ExecStartPost` lines from `firstboot_release_gate.service`.
+- rollback note: disable this optional helper in packaging and firstboot service refresh if needed.
 - Existing env-policy smoke evidence remains authoritative.
