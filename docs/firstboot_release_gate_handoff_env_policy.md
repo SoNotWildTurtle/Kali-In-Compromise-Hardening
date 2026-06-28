@@ -35,6 +35,16 @@ python3 firstboot_release_gate_handoff_env_policy.py \
   --output /var/log/firstboot_release_gate.handoff_env_policy.md
 ```
 
+Write a shell-safe summary sidecar for lightweight dashboards and follow-on release gates:
+
+```bash
+python3 firstboot_release_gate_handoff_env_policy.py \
+  --input /var/log/firstboot_release_gate.handoff_status_reader.summary.env \
+  --format json \
+  --output /var/log/firstboot_release_gate.handoff_env_policy.json \
+  --summary /var/log/firstboot_release_gate.handoff_env_policy.summary.env
+```
+
 Use `--require-pass` when a non-zero exit is desired unless the aggregate status is approved.
 
 ## Firstboot service artifacts
@@ -43,6 +53,7 @@ Use `--require-pass` when a non-zero exit is desired unless the aggregate status
 
 - `/var/log/firstboot_release_gate.handoff_env_policy.json`
 - `/var/log/firstboot_release_gate.handoff_env_policy.md`
+- `/var/log/firstboot_release_gate.handoff_env_policy.summary.env`
 
 These files are passive derivatives. They do not replace the authoritative release gate, bundle, digest, handoff index, handoff verification, freshness, summary smoke, or status-reader JSON/Markdown artifacts.
 
@@ -52,6 +63,12 @@ The validator expects single-quoted key/value rows with the `FIRSTBOOT_HANDOFF_S
 
 It verifies the expected privacy scope, `ok`/decision/release-gate consistency, blocker count consistency, and non-zero artifact count.
 
+## Summary sidecar contract
+
+The optional `--summary` file uses single-quoted `FIRSTBOOT_HANDOFF_ENV_POLICY_` key/value rows. It includes the policy decision, release gate, source component, source privacy scope, blocker count, blockers, total artifact count, privacy scope, and safe-default statement.
+
+The sidecar is intentionally aggregate-only. It is meant for local dashboards, lightweight shell readers, aggregate posture rollups, and follow-on release gates that need a compact signal without parsing JSON.
+
 ## Output contract
 
 JSON and Markdown include compact decision status, selected aggregate values, blockers, operator next steps, privacy exclusions, safe-default statement, and rollback note. Text output is compact for terminal review.
@@ -60,7 +77,7 @@ JSON and Markdown include compact decision status, selected aggregate values, bl
 
 The validator is aggregate-only. It excludes raw telemetry, raw logs, packets, captures, private identifiers, model binaries, and datasets. It does not open sockets, approve releases, edit services, restart timers, modify host or VM controls, alter restore approval, or mutate firstboot evidence.
 
-The firstboot service wiring writes only derived JSON/Markdown evidence under `/var/log` using the existing service write path and keeps the same sandboxing stance: no new privileges, no capabilities, protected homes, protected kernel/control-group surfaces, and native syscall architecture restrictions.
+The firstboot service wiring writes only derived JSON/Markdown/summary evidence under `/var/log` using the existing service write path and keeps the same sandboxing stance: no new privileges, no capabilities, protected homes, protected kernel/control-group surfaces, and native syscall architecture restrictions.
 
 ## Compatibility
 
@@ -68,16 +85,17 @@ The firstboot service wiring writes only derived JSON/Markdown evidence under `/
 - Suitable for Kali/Debian Python 3 environments.
 - Additive and safe to ignore when workflows prefer status-reader JSON or Markdown.
 - The upstream status-reader JSON remains the authoritative compact report.
+- The optional summary sidecar preserves the same fail-closed decision as the JSON output.
 
 ## Rollback
 
 1. Stop calling `firstboot_release_gate_handoff_env_policy.py` from local release or handoff workflows.
 2. Remove the helper from `build_custom_iso.sh` packaging if custom images should not include it.
-3. Remove the optional `firstboot_release_gate.service` `ExecStartPost=` lines that write env-policy JSON and Markdown artifacts.
-4. Delete optional generated env-policy JSON or Markdown artifacts.
+3. Remove the optional `firstboot_release_gate.service` `ExecStartPost=` lines that write env-policy JSON, Markdown, or summary artifacts.
+4. Delete optional generated env-policy JSON, Markdown, or summary env artifacts.
 5. Keep upstream firstboot release-gate and handoff artifacts unchanged.
 
 ## Follow-up work
 
 - Add a broader aggregate posture rollup that combines env policy, IDS health evidence, and model-audit gate state.
-- Add a dashboard reader that consumes the JSON output while preserving aggregate-only privacy boundaries.
+- Add a dashboard reader that consumes the JSON or summary output while preserving aggregate-only privacy boundaries.
