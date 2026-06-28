@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added `firstboot_release_gate_operator_digest.py`, a passive aggregate-only operator digest that composes firstboot release-gate status JSON and bundle manifest JSON into manager-readable JSON or Markdown handoff evidence.
+- Packaged the operator digest helper into custom ISO builds and wired `firstboot_release_gate.service` to refresh JSON and Markdown digest artifacts after status and bundle manifests are generated.
+- Added `docs/firstboot_release_gate_operator_digest.md` plus tests for approved digests, deferred Markdown handoffs, source mismatch blockers, privacy exclusions, rollback guidance, and `--require-pass` behavior.
 - Added `--format markdown` to `firstboot_release_gate_status.py`, giving operators, dashboards, recovery bundles, and shift handoffs a privacy-safe readable status artifact derived from the same validated aggregate summary used for text and JSON.
 - Added Markdown status coverage for approved and deferred firstboot release-gate summaries, including validation blockers, safety/privacy notes, rollback guidance, and `--require-pass` exit behavior.
 - Wired `firstboot_release_gate.service` to refresh `/var/log/firstboot_release_gate.status.json`, `/var/log/firstboot_release_gate.bundle_manifest.json`, and `/var/log/firstboot_release_gate.bundle_manifest.md` after the passive release-gate artifacts are generated, keeping hourly handoff evidence coherent for dashboards, release review, and recovery bundles.
@@ -66,6 +69,8 @@
 
 ### Security
 
+- The firstboot release-gate operator digest is additive and passive: it summarizes aggregate status and bundle manifest JSON for handoff review without changing services, timers, firewall rules, models, datasets, approvals, restore state, host settings, VM settings, or firstboot state.
+- The operator digest `--require-pass` path exits non-zero when status and bundle evidence are missing, malformed, failing, mismatched, blocked, incomplete, or missing required SHA-256 artifact references.
 - The firstboot release-gate status Markdown output is additive and passive: it renders validated aggregate summary fields only and does not change host, VM, firewall, service, model, dataset, approval, restore, or firstboot state.
 - The Markdown output preserves the existing fail-closed status-reader behavior for malformed summaries, privacy-scope mismatches, deferred gate state, stale/skewed evidence, and `--require-pass` exits.
 - The firstboot release-gate service refresh is additive and passive: it writes derived aggregate status and bundle manifest files after the existing release-gate command without opening sockets, changing firewall rules, approving restores, or modifying host, VM, IDS, model, dataset, approval, restore, or firstboot state.
