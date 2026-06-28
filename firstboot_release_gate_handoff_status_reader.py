@@ -169,6 +169,36 @@ def render_markdown(report: dict[str, Any]) -> str:
     return '\n'.join(lines)
 
 
+def env_escape(value: Any) -> str:
+    text = str(value)
+    return "'" + text.replace("'", "'\\''") + "'"
+
+
+def render_summary_env(report: dict[str, Any]) -> str:
+    blockers = report['blockers']
+    source_values = report['source_values']
+    values = {
+        'FIRSTBOOT_HANDOFF_STATUS_READER_OK': '1' if report['ok'] else '0',
+        'FIRSTBOOT_HANDOFF_STATUS_READER_DECISION': report['decision'],
+        'FIRSTBOOT_HANDOFF_STATUS_READER_RELEASE_GATE': report['release_gate'],
+        'FIRSTBOOT_HANDOFF_STATUS_READER_SOURCE_COMPONENT': report['source_component'],
+        'FIRSTBOOT_HANDOFF_STATUS_READER_SOURCE_CREATED_UTC': report['source_created_utc'],
+        'FIRSTBOOT_HANDOFF_STATUS_READER_BLOCKER_COUNT': len(blockers),
+        'FIRSTBOOT_HANDOFF_STATUS_READER_BLOCKERS': 'none' if not blockers else ','.join(blockers),
+        'FIRSTBOOT_HANDOFF_STATUS_READER_FRESH_REQUIRED_VERIFIED': source_values.get('fresh_required_verified', 'missing'),
+        'FIRSTBOOT_HANDOFF_STATUS_READER_REQUIRED_VERIFIED': source_values.get('required_verified', 'missing'),
+        'FIRSTBOOT_HANDOFF_STATUS_READER_TOTAL_ARTIFACTS': source_values.get('total_artifacts', 'missing'),
+        'FIRSTBOOT_HANDOFF_STATUS_READER_SOURCE_BLOCKER_COUNT': source_values.get('blocker_count', 'missing'),
+        'FIRSTBOOT_HANDOFF_STATUS_READER_PRIVACY_SCOPE': report['privacy_scope'],
+    }
+    return ''.join(f'{key}={env_escape(value)}\n' for key, value in values.items())
+
+
+def write_summary_env(report: dict[str, Any], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_summary_env(report), encoding='utf-8')
+
+
 def render(report: dict[str, Any], output_format: str) -> str:
     if output_format == 'json':
         return json.dumps(report, indent=2, sort_keys=True) + '\n'
@@ -182,6 +212,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument('--input', default=str(DEFAULT_INPUT), help='Path to handoff summary smoke JSON evidence.')
     parser.add_argument('--format', choices=('text', 'json', 'markdown'), default='text')
     parser.add_argument('--output', help='Optional output path; stdout is used when omitted.')
+    parser.add_argument('--summary', help='Optional shell-friendly .env summary output path.')
     parser.add_argument('--require-pass', action='store_true', help='Exit non-zero unless the compact status is approved.')
     return parser.parse_args(argv)
 
@@ -197,6 +228,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         output_path.write_text(rendered, encoding='utf-8')
     else:
         print(rendered, end='')
+    if args.summary:
+        write_summary_env(report, Path(args.summary))
     if args.require_pass and not report['ok']:
         return 10
     return 0

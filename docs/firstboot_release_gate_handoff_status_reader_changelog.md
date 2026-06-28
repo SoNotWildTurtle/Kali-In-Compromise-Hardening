@@ -8,6 +8,8 @@
 - Packaged the reader in `build_custom_iso.sh` so custom Kali images include the optional operator status helper by default.
 - Added `firstboot_release_gate.service` refresh wiring for `/var/log/firstboot_release_gate.handoff_status_reader.json` and `/var/log/firstboot_release_gate.handoff_status_reader.md` so firstboot handoffs include compact status-reader artifacts by default.
 - Added static service-contract assertions for the generated JSON and Markdown status-reader artifacts.
+- Added optional `--summary` output for `/var/log/firstboot_release_gate.handoff_status_reader.summary.env`, giving release scripts and dashboards a shell-friendly aggregate handoff status without parsing JSON or Markdown.
+- Added service-contract and behavior tests for the status-reader `.summary.env` artifact.
 
 ## Security
 
@@ -15,11 +17,12 @@
 - The `--require-pass` path exits non-zero unless compact status evidence is approved and internally consistent.
 - The helper excludes raw telemetry, raw logs, packets, captures, private identifiers, model binaries, and datasets from rendered output.
 - The service wiring is additive and keeps existing systemd sandboxing, capability bounding, read-only input paths, and `/var/log`-scoped write behavior.
+- The summary sidecar exposes only already-derived aggregate status values, blocker counts, and artifact counts.
 
 ## Rollback
 
 - Remove `firstboot_release_gate_handoff_status_reader.py` from local release or handoff workflows.
 - Remove the helper from `build_custom_iso.sh` packaging if custom images should not include it.
-- Remove the optional `firstboot_release_gate.service` `ExecStartPost=` lines that write handoff-status-reader JSON and Markdown artifacts.
-- Delete optional generated handoff-status-reader JSON or Markdown files.
+- Remove the optional `firstboot_release_gate.service` `ExecStartPost=` lines that write handoff-status-reader JSON, Markdown, or summary artifacts.
+- Delete optional generated handoff-status-reader JSON, Markdown, or `.summary.env` files.
 - Keep authoritative smoke, freshness, verification, index, digest, bundle, and release-gate artifacts unchanged.
