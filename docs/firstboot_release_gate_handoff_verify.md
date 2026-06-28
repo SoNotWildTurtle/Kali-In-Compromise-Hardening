@@ -23,6 +23,8 @@ firstboot_release_gate_handoff_verify.py \
 
 `--artifact-root` lets reviewers verify a copied handoff directory using artifact basenames from the index. Without it, the verifier uses recorded paths when present and otherwise falls back to the index directory.
 
+Custom ISO builds package the verifier by default. `firstboot_release_gate.service` refreshes both `/var/log/firstboot_release_gate.handoff_verify.json` and `/var/log/firstboot_release_gate.handoff_verify.md` after the handoff index is generated, using `/var/log` as the artifact root so operators get immediate aggregate verification evidence for the current firstboot evidence set.
+
 ## Output contract
 
 The JSON output contains:
@@ -42,13 +44,15 @@ This helper is intentionally read-only and aggregate-only. It does not inspect r
 
 It verifies that the privacy-safe handoff artifacts copied into a release or recovery bundle still match the previously generated SHA-256 values. That supports reproducibility, handoff confidence, and fail-closed review without adding new control-plane behavior.
 
+The service integration remains passive: it writes derived verification artifacts only, keeps the existing systemd sandbox posture, does not request capabilities, and does not alter network, firewall, host, VM, IDS, approval, restore, or firstboot state.
+
 ## Compatibility
 
 This is additive. Existing release-gate, status, bundle manifest, operator digest, and handoff index schemas remain unchanged. Consumers that do not need independent bundle verification can ignore this helper.
 
 ## Rollback
 
-Delete the generated `firstboot_release_gate.handoff_verify.json` or `.md` artifact, or revert the helper, docs, tests, and packaging entry. The upstream firstboot release gate, status, bundle manifest, operator digest, and handoff index remain unchanged.
+Delete the generated `firstboot_release_gate.handoff_verify.json` or `.md` artifact, or revert the helper, docs, tests, packaging entry, and two `ExecStartPost` service lines. The upstream firstboot release gate, status, bundle manifest, operator digest, and handoff index remain unchanged.
 
 ## Follow-up work
 
