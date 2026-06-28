@@ -120,6 +120,7 @@ core_modules=(
     "firstboot_release_gate_handoff_freshness.py"
     "firstboot_release_gate_handoff_summary_smoke.py"
     "firstboot_release_gate_handoff_status_reader.py"
+    "firstboot_release_gate_handoff_env_policy.py"
     "firstboot_release_gate.service"
     "firstboot_release_gate.timer"
     "host_vm_policy_restore_execute.py"
