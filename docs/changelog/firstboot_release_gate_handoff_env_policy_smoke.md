@@ -15,6 +15,8 @@
 
 ## Rollback
 
+The rollback path is intentionally narrow and preserves upstream release-gate and env-policy evidence.
+
 - Remove the optional helper from `build_custom_iso.sh` packaging and remove the two `firstboot_release_gate.service` `ExecStartPost=` lines that emit env-policy smoke JSON and Markdown artifacts.
 - Delete optional generated `/var/log/firstboot_release_gate.handoff_env_policy_smoke.*` artifacts.
 - Keep upstream release-gate, status-reader, and env-policy JSON/Markdown artifacts unchanged.
