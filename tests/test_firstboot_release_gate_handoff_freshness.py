@@ -127,12 +127,45 @@ def test_handoff_freshness_markdown_documents_policy_privacy_and_rollback(tmp_pa
     assert 'raw telemetry' in markdown
 
 
+def test_handoff_freshness_summary_env_exports_machine_status(tmp_path: Path) -> None:
+    verification = make_verification(tmp_path)
+    output = tmp_path / 'freshness.json'
+    summary = tmp_path / 'freshness.summary.env'
+    subprocess.run(
+        [
+            sys.executable,
+            'firstboot_release_gate_handoff_freshness.py',
+            '--input',
+            str(verification),
+            '--output',
+            str(output),
+            '--summary',
+            str(summary),
+            '--max-artifact-age-minutes',
+            '60',
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    summary_text = summary.read_text(encoding='utf-8')
+    assert "FIRSTBOOT_HANDOFF_FRESHNESS_OK='1'" in summary_text
+    assert "FIRSTBOOT_HANDOFF_FRESHNESS_RELEASE_GATE='pass'" in summary_text
+    assert "FIRSTBOOT_HANDOFF_FRESHNESS_BLOCKER_COUNT='0'" in summary_text
+    assert "FIRSTBOOT_HANDOFF_FRESHNESS_BLOCKERS='none'" in summary_text
+    assert 'raw telemetry' in summary_text
+
+
 def test_handoff_freshness_static_documentation_contract() -> None:
     subprocess.run([sys.executable, '-m', 'py_compile', 'firstboot_release_gate_handoff_freshness.py'], check=True)
     docs = Path('docs/firstboot_release_gate_handoff_freshness.md').read_text(encoding='utf-8')
     changelog = Path('docs/firstboot_release_gate_handoff_freshness_changelog.md').read_text(encoding='utf-8')
+    service = Path('firstboot_release_gate.service').read_text(encoding='utf-8')
     assert '--max-artifact-age-minutes' in docs
     assert '--require-fresh' in docs
+    assert '--summary' in docs
+    assert 'summary.env' in docs
     assert 'rollback' in docs.lower()
     assert 'aggregate-only' in docs
     assert 'firstboot_release_gate_handoff_freshness.py' in changelog
+    assert 'firstboot_release_gate.handoff_freshness.summary.env' in service
