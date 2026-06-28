@@ -116,6 +116,7 @@ core_modules=(
     "firstboot_release_gate_bundle_manifest.py"
     "firstboot_release_gate_operator_digest.py"
     "firstboot_release_gate_handoff_index.py"
+    "firstboot_release_gate_handoff_verify.py"
     "firstboot_release_gate.service"
     "firstboot_release_gate.timer"
     "host_vm_policy_restore_execute.py"
