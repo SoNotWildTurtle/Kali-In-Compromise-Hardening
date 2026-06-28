@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added `firstboot_release_gate_handoff_freshness.py`, a passive aggregate-only freshness gate that evaluates the age of firstboot release-gate handoff verification evidence and verified required aggregate artifacts before ISO promotion, recovery review, or manager handoff.
+- Added JSON and Markdown freshness evidence with policy thresholds, artifact ages, blockers, manager summary, handoff checklist, privacy exclusions, rollback guidance, and `--require-fresh` release-gate behavior.
+- Added `docs/firstboot_release_gate_handoff_freshness.md`, a changelog fragment, and tests for current evidence approval, stale verified artifact fail-closed behavior, Markdown handoffs, documentation coverage, privacy exclusions, and rollback guidance.
 - Added `firstboot_release_gate_operator_digest.py`, a passive aggregate-only operator digest that composes firstboot release-gate status JSON and bundle manifest JSON into manager-readable JSON or Markdown handoff evidence.
 - Packaged the operator digest helper into custom ISO builds and wired `firstboot_release_gate.service` to refresh JSON and Markdown digest artifacts after status and bundle manifests are generated.
 - Added `docs/firstboot_release_gate_operator_digest.md` plus tests for approved digests, deferred Markdown handoffs, source mismatch blockers, privacy exclusions, rollback guidance, and `--require-pass` behavior.
@@ -69,6 +72,8 @@
 
 ### Security
 
+- The firstboot release-gate handoff freshness helper is additive and passive: it reads only existing aggregate verification evidence and filesystem metadata, emits derived freshness evidence, and does not change host, VM, firewall, service, model, dataset, approval, restore, network, or firstboot state.
+- The freshness helper `--require-fresh` path exits non-zero when verification evidence is missing, malformed, deferred, privacy-scope mismatched, stale, or when verified required artifacts are missing or stale.
 - The firstboot release-gate operator digest is additive and passive: it summarizes aggregate status and bundle manifest JSON for handoff review without changing services, timers, firewall rules, models, datasets, approvals, restore state, host settings, VM settings, or firstboot state.
 - The operator digest `--require-pass` path exits non-zero when status and bundle evidence are missing, malformed, failing, mismatched, blocked, incomplete, or missing required SHA-256 artifact references.
 - The firstboot release-gate status Markdown output is additive and passive: it renders validated aggregate summary fields only and does not change host, VM, firewall, service, model, dataset, approval, restore, or firstboot state.
