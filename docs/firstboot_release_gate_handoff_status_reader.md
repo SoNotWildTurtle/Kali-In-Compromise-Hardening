@@ -35,6 +35,15 @@ python3 firstboot_release_gate_handoff_status_reader.py \
 
 Use `--require-pass` in release gates. It exits `10` unless the compact status is approved and internally consistent.
 
+## Firstboot service artifacts
+
+`firstboot_release_gate.service` refreshes the status reader outputs after `firstboot_release_gate_handoff_summary_smoke.py` writes JSON and Markdown smoke evidence:
+
+- `/var/log/firstboot_release_gate.handoff_status_reader.json`
+- `/var/log/firstboot_release_gate.handoff_status_reader.md`
+
+These generated artifacts are passive derivatives. They do not replace the authoritative smoke, freshness, verification, index, digest, bundle, or release-gate artifacts. They exist so recovery scripts, dashboards, and operators can consume the same compact go/no-go handoff state without introducing one-off parsing logic.
+
 ## Input contract
 
 The reader expects the smoke JSON created by `firstboot_release_gate_handoff_summary_smoke.py` and validates:
@@ -72,6 +81,8 @@ JSON and Markdown include:
 
 The reader is aggregate-only. It does not read raw telemetry, raw logs, packets, captures, private identifiers, model binaries, or datasets. It does not open network sockets, approve releases, edit services, restart timers, modify system configuration, alter host/VM controls, or change firstboot state.
 
+The firstboot service wiring only invokes the reader after upstream smoke evidence has been generated. It writes derived JSON/Markdown evidence under `/var/log` using the existing service write path and keeps the same sandboxing stance: no new privileges, no capabilities, protected homes, protected kernel/control-group surfaces, and native syscall architecture restrictions.
+
 It is fail-closed by design. Missing files, invalid JSON, component mismatches, privacy-scope mismatches, contradictory pass/stop values, and passing source evidence with blockers all produce a deferred decision.
 
 ## Compatibility
@@ -80,16 +91,18 @@ It is fail-closed by design. Missing files, invalid JSON, component mismatches, 
 - Suitable for Kali/Debian Python 3 environments.
 - Text output is shell-friendly but should not be treated as an override for full release-gate evidence.
 - The upstream smoke JSON remains authoritative.
+- Generated firstboot artifacts are additive and may be safely ignored by existing workflows.
 
 ## Rollback
 
 1. Stop calling `firstboot_release_gate_handoff_status_reader.py` from any local release or handoff scripts.
 2. Remove the helper from `build_custom_iso.sh` if image packaging is no longer desired.
-3. Delete optional generated `handoff_status_reader` JSON or Markdown artifacts.
-4. Keep the authoritative smoke, freshness, verification, index, digest, bundle, and release-gate artifacts unchanged.
+3. Remove the optional `firstboot_release_gate.service` `ExecStartPost=` lines that write `handoff_status_reader` JSON and Markdown artifacts.
+4. Delete optional generated `handoff_status_reader` JSON or Markdown artifacts.
+5. Keep the authoritative smoke, freshness, verification, index, digest, bundle, and release-gate artifacts unchanged.
 
 ## Follow-up work
 
 - Add a future dashboard widget that consumes the JSON output.
-- Add an optional firstboot service `ExecStartPost=` line if operators want a generated terminal-status artifact by default.
 - Feed the compact result into aggregate posture and release-gate dashboards without exposing raw telemetry.
+- Add a machine-readable rollup that includes the compact status-reader output with IDS model health and firstboot evidence status.
