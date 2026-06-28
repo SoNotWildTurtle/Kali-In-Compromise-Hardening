@@ -13,6 +13,7 @@ from typing import Any, Optional
 
 DEFAULT_INPUT = Path('/var/log/firstboot_release_gate.handoff_status_reader.summary.env')
 EXPECTED_PRIVACY_SCOPE = 'aggregate_release_gate_handoff_status_reader_only'
+SUMMARY_PREFIX = 'FIRSTBOOT_HANDOFF_ENV_POLICY'
 REQUIRED_KEYS = {
     'FIRSTBOOT_HANDOFF_STATUS_READER_OK',
     'FIRSTBOOT_HANDOFF_STATUS_READER_DECISION',
@@ -27,6 +28,10 @@ PRIVACY_EXCLUDED = ('raw telemetry', 'raw logs', 'packets', 'captures', 'private
 
 def utc_now(epoch: Optional[float] = None) -> str:
     return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() if epoch is None else epoch))
+
+
+def shell_quote(value: object) -> str:
+    return "'" + str(value).replace("'", "'\\''") + "'"
 
 
 def read_env(path: Path) -> tuple[dict[str, str], list[str]]:
@@ -155,6 +160,26 @@ def render_text(report: dict[str, Any]) -> str:
     ]) + '\n'
 
 
+def render_summary_env(report: dict[str, Any]) -> str:
+    blockers = ','.join(report['blockers']) if report['blockers'] else 'none'
+    values = {
+        f'{SUMMARY_PREFIX}_OK': '1' if report['ok'] else '0',
+        f'{SUMMARY_PREFIX}_DECISION': report['decision'],
+        f'{SUMMARY_PREFIX}_RELEASE_GATE': report['release_gate'],
+        f'{SUMMARY_PREFIX}_SOURCE_COMPONENT': report['component'],
+        f'{SUMMARY_PREFIX}_SOURCE_CREATED_UTC': report['created_utc'],
+        f'{SUMMARY_PREFIX}_SOURCE_DECISION': report['source_decision'],
+        f'{SUMMARY_PREFIX}_SOURCE_RELEASE_GATE': report['source_release_gate'],
+        f'{SUMMARY_PREFIX}_SOURCE_PRIVACY_SCOPE': report['source_privacy_scope'],
+        f'{SUMMARY_PREFIX}_BLOCKER_COUNT': len(report['blockers']),
+        f'{SUMMARY_PREFIX}_BLOCKERS': blockers,
+        f'{SUMMARY_PREFIX}_TOTAL_ARTIFACTS': report['source_values']['total_artifacts'],
+        f'{SUMMARY_PREFIX}_PRIVACY_SCOPE': report['privacy_scope'],
+        f'{SUMMARY_PREFIX}_SAFE_DEFAULT': report['safe_default'],
+    }
+    return ''.join(f'{key}={shell_quote(value)}\n' for key, value in values.items())
+
+
 def render_markdown(report: dict[str, Any]) -> str:
     lines = [
         '# Firstboot release-gate handoff env policy',
@@ -195,6 +220,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument('--input', default=str(DEFAULT_INPUT), help='Path to status-reader summary env evidence.')
     parser.add_argument('--format', choices=('text', 'json', 'markdown'), default='text')
     parser.add_argument('--output', help='Optional output path; stdout is used when omitted.')
+    parser.add_argument('--summary', help='Optional shell-safe summary env sidecar output path.')
     parser.add_argument('--require-pass', action='store_true', help='Exit non-zero unless summary policy evidence is approved.')
     return parser.parse_args(argv)
 
@@ -210,6 +236,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         output_path.write_text(rendered, encoding='utf-8')
     else:
         print(rendered, end='')
+    if args.summary:
+        summary_path = Path(args.summary)
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(render_summary_env(report), encoding='utf-8')
     if args.require_pass and not report['ok']:
         return 10
     return 0
