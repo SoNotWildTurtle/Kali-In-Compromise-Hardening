@@ -146,14 +146,19 @@ def test_status_reader_markdown_includes_privacy_and_rollback(tmp_path: Path) ->
     assert 'Rollback' in markdown
 
 
-def test_status_reader_static_packaging_and_docs_contracts() -> None:
+def test_status_reader_static_packaging_service_and_docs_contracts() -> None:
     subprocess.run([sys.executable, '-m', 'py_compile', 'firstboot_release_gate_handoff_status_reader.py'], check=True)
     docs = Path('docs/firstboot_release_gate_handoff_status_reader.md').read_text(encoding='utf-8')
     changelog = Path('docs/firstboot_release_gate_handoff_status_reader_changelog.md').read_text(encoding='utf-8')
     build = Path('build_custom_iso.sh').read_text(encoding='utf-8')
+    service = Path('firstboot_release_gate.service').read_text(encoding='utf-8')
     assert '--require-pass' in docs
     assert 'terminal' in docs.lower()
     assert 'aggregate-only' in docs
     assert 'rollback' in docs.lower()
     assert 'firstboot_release_gate_handoff_status_reader.py' in changelog
     assert 'firstboot_release_gate_handoff_status_reader.py' in build
+    assert 'firstboot_release_gate.handoff_summary_smoke.json' in service
+    assert 'firstboot_release_gate.handoff_status_reader.json' in service
+    assert 'firstboot_release_gate.handoff_status_reader.md' in service
+    assert '--format markdown' in service
