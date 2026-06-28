@@ -2,6 +2,8 @@
 
 `firstboot_final_readiness.py` is a passive final release-gate helper for firstboot handoff evidence.
 
+This firstboot final readiness helper keeps downstream release review on an aggregate-only, read-only evidence contract.
+
 ## Purpose
 
 The helper consumes only the aggregate shell-safe summary emitted by `firstboot_release_gate_handoff_env_policy_smoke.py` and derives a compact final readiness result for release review, recovery handoff, and operator dashboards.
