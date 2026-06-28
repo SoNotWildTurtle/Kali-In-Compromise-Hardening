@@ -8,7 +8,7 @@ DOC="docs/firstboot_final_readiness_contract.md"
 
 require_text() {
     local needle="$1"
-    if ! grep -Fq "$needle" "$DOC"; then
+    if ! grep -Fq -- "$needle" "$DOC"; then
         echo "Missing expected contract text: $needle" >&2
         exit 1
     fi
@@ -26,7 +26,7 @@ require_text "must not read raw packets"
 require_text "Rollback"
 require_text "--require-pass"
 
-if grep -Eiq 'force-merge|bypass protections|raw packets.*emit|credentials.*emit' "$DOC"; then
+if grep -Eiq -- 'force-merge|bypass protections|raw packets.*emit|credentials.*emit' "$DOC"; then
     echo "Unsafe release or privacy wording found in $DOC" >&2
     exit 1
 fi
