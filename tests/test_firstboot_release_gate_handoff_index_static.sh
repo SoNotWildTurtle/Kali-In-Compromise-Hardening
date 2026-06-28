@@ -101,6 +101,6 @@ assert_file_contains "$TMPDIR/deferred.json" '"decision": "deferred"'
 assert_file_contains build_custom_iso.sh '"firstboot_release_gate_handoff_index.py"'
 assert_file_contains firstboot_release_gate.service 'firstboot_release_gate_handoff_index.py'
 assert_file_contains docs/firstboot_release_gate_handoff_index.md 'Rollback'
-assert_file_contains CHANGELOG.md 'firstboot_release_gate_handoff_index.py'
+assert_file_contains changelog.d/firstboot_release_gate_handoff_index.md 'firstboot_release_gate_handoff_index.py'
 
 echo '[PASS] firstboot release-gate handoff index static coverage'
