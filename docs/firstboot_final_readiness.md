@@ -27,18 +27,36 @@ The helper can emit:
 - Markdown evidence for handoff packets; and
 - optional `.summary.env` sidecar values under the `FIRSTBOOT_FINAL_READINESS_*` prefix.
 
+## Smoke validation
+
+`firstboot_final_readiness_smoke.py` is an additive passive smoke gate for the final-readiness `.summary.env` sidecar. It parses the quoted `FIRSTBOOT_FINAL_READINESS_*` contract without sourcing it, confirms the final helper stayed aggregate-only and read-only, verifies approved/pass/deferred/stop consistency, checks blocker and artifact counts, and emits JSON, Markdown, and optional `FIRSTBOOT_FINAL_READINESS_SMOKE_*` summary evidence.
+
+The smoke helper fails closed when the summary is missing, malformed, privacy-scope mismatched, marked pass while failed, missing blocker details, missing artifact counts, or inconsistent with the final-readiness component identity. It exists so release jobs, firstboot dashboards, and recovery handoff tooling can consume a stable sidecar contract before trusting the final aggregate readiness result.
+
 ## Approval contract
 
 The helper approves only when upstream smoke evidence is approved, passing, aggregate-only, blocker-free, and read-only by contract. Missing, malformed, privacy-mismatched, or deferred evidence fails closed with a `deferred` decision and `stop` release gate.
+
+The smoke helper approves only when the final-readiness summary itself is approved, passing, aggregate-only, blocker-free, backed by at least one upstream artifact, and internally consistent. It does not promote, merge, approve restore execution, change system state, or bypass the underlying final-readiness decision.
 
 ## Firstboot wiring
 
 `firstboot_release_gate.service` refreshes JSON, Markdown, and `.summary.env` final readiness artifacts after the env-policy smoke gate runs.
 
+The same service then refreshes final-readiness smoke JSON, Markdown, and `.summary.env` artifacts:
+
+- `/var/log/firstboot_release_gate.final_readiness_smoke.json`
+- `/var/log/firstboot_release_gate.final_readiness_smoke.md`
+- `/var/log/firstboot_release_gate.final_readiness_smoke.summary.env`
+
 ## Rollback
 
 Rollback is removal of this optional helper from packaging and firstboot service refresh. The upstream env-policy smoke JSON, Markdown, and `.summary.env` evidence remain authoritative.
 
+Rollback for the smoke helper is removal of `firstboot_final_readiness_smoke.py` from packaging and removal of the final-readiness smoke `ExecStartPost=` lines from `firstboot_release_gate.service`. The final-readiness JSON, Markdown, and `.summary.env` artifacts remain authoritative.
+
 ## Security notes
 
 This is a read-only aggregate helper. It does not change networking, firewall rules, host settings, VM settings, datasets, model files, approval state, restore state, credentials, or persistence. The safe default is deferred/stop when evidence is incomplete or inconsistent.
+
+The smoke helper is also read-only and aggregate-only. It does not source shell content, open sockets, inspect raw telemetry, read model binaries, mutate `/var/log` inputs, alter services, change firewall state, approve restores, or modify host/VM settings. Its safe default is deferred/stop when the final-readiness sidecar is incomplete, malformed, privacy-mismatched, or internally inconsistent.
