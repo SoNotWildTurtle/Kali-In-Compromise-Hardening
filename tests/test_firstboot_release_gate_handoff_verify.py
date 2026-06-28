@@ -138,9 +138,17 @@ def test_handoff_verify_markdown_documents_privacy_and_rollback(tmp_path: Path) 
 
 def test_handoff_verify_static_documentation_contract() -> None:
     subprocess.run([sys.executable, '-m', 'py_compile', 'firstboot_release_gate_handoff_verify.py'], check=True)
-    changelog = Path('CHANGELOG.md').read_text(encoding='utf-8')
+    changelog = Path('docs/firstboot_release_gate_handoff_verify_changelog.md').read_text(encoding='utf-8')
     docs = Path('docs/firstboot_release_gate_handoff_verify.md').read_text(encoding='utf-8')
+    build_script = Path('build_custom_iso.sh').read_text(encoding='utf-8')
+    service = Path('firstboot_release_gate.service').read_text(encoding='utf-8')
     assert 'firstboot_release_gate_handoff_verify.py' in changelog
+    assert 'firstboot_release_gate_handoff_verify.py' in build_script
+    assert 'firstboot_release_gate.handoff_verify.json' in service
+    assert 'firstboot_release_gate.handoff_verify.md' in service
+    assert '--artifact-root /var/log' in service
+    assert 'CapabilityBoundingSet=' in service
+    assert 'ReadWritePaths=/var/log' in service
     assert '--require-verified' in docs
     assert 'rollback' in docs.lower()
     assert 'aggregate-only' in docs
