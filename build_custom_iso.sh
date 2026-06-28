@@ -123,6 +123,7 @@ core_modules=(
     "firstboot_release_gate_handoff_env_policy.py"
     "firstboot_release_gate_handoff_env_policy_smoke.py"
     "firstboot_final_readiness.py"
+    "firstboot_final_readiness_smoke.py"
     "firstboot_release_gate.service"
     "firstboot_release_gate.timer"
     "host_vm_policy_restore_execute.py"
@@ -259,3 +260,4 @@ chmod +x "$INSTALL_DIR"/*.sh "$INSTALL_DIR"/*.py 2>/dev/null || true
 mkisofs -o "$OUT_ISO" -b isolinux/isolinux.bin -c isolinux/boot.cat \
     -no-emul-boot -boot-load-size 4 -boot-info-table "$EXTRACT_DIR"
 isohybrid "$OUT_ISO"
+echo "Custom Kali ISO written to $OUT_ISO"

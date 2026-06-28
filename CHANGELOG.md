@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added `firstboot_final_readiness_smoke.py`, a passive aggregate-only smoke gate for the final-readiness `.summary.env` sidecar that validates the quoted `FIRSTBOOT_FINAL_READINESS_*` contract without sourcing shell content.
+- Packaged the final-readiness smoke helper, wired `firstboot_release_gate.service` to refresh JSON, Markdown, and `.summary.env` smoke artifacts, and added static coverage for approved evidence, privacy-scope fail-closed behavior, packaging, service wiring, documentation, rollback notes, and changelog coverage.
 - Added `firstboot_release_gate_handoff_freshness.py`, a passive aggregate-only freshness gate that evaluates the age of firstboot release-gate handoff verification evidence and verified required aggregate artifacts before ISO promotion, recovery review, or manager handoff.
 - Added JSON and Markdown freshness evidence with policy thresholds, artifact ages, blockers, manager summary, handoff checklist, privacy exclusions, rollback guidance, and `--require-fresh` release-gate behavior.
 - Added `docs/firstboot_release_gate_handoff_freshness.md`, a changelog fragment, and tests for current evidence approval, stale verified artifact fail-closed behavior, Markdown handoffs, documentation coverage, privacy exclusions, and rollback guidance.
@@ -72,6 +74,8 @@
 
 ### Security
 
+- The final-readiness smoke gate is additive and passive: it validates only the quoted aggregate final-readiness summary sidecar, emits derived smoke evidence, and does not source shell content, inspect raw telemetry, open sockets, change firewall rules, mutate services, approve restores, or modify host/VM state.
+- The smoke helper `--require-pass` path exits non-zero when final-readiness evidence is missing, malformed, privacy-scope mismatched, internally inconsistent, blocker-inconsistent, artifact-empty, or marked pass while failed.
 - The firstboot release-gate handoff freshness helper is additive and passive: it reads only existing aggregate verification evidence and filesystem metadata, emits derived freshness evidence, and does not change host, VM, firewall, service, model, dataset, approval, restore, network, or firstboot state.
 - The freshness helper `--require-fresh` path exits non-zero when verification evidence is missing, malformed, deferred, privacy-scope mismatched, stale, or when verified required artifacts are missing or stale.
 - The firstboot release-gate operator digest is additive and passive: it summarizes aggregate status and bundle manifest JSON for handoff review without changing services, timers, firewall rules, models, datasets, approvals, restore state, host settings, VM settings, or firstboot state.
