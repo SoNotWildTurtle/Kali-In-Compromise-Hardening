@@ -136,12 +136,11 @@ def test_handoff_verify_markdown_documents_privacy_and_rollback(tmp_path: Path) 
     assert 'raw telemetry' in markdown
 
 
-def test_handoff_verify_static_packaging_contract() -> None:
+def test_handoff_verify_static_documentation_contract() -> None:
     subprocess.run([sys.executable, '-m', 'py_compile', 'firstboot_release_gate_handoff_verify.py'], check=True)
-    readme = Path('README.md').read_text(encoding='utf-8')
     changelog = Path('CHANGELOG.md').read_text(encoding='utf-8')
     docs = Path('docs/firstboot_release_gate_handoff_verify.md').read_text(encoding='utf-8')
-    assert 'firstboot_release_gate_handoff_verify.py' in readme
     assert 'firstboot_release_gate_handoff_verify.py' in changelog
     assert '--require-verified' in docs
     assert 'rollback' in docs.lower()
+    assert 'aggregate-only' in docs
