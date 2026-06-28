@@ -66,7 +66,7 @@ assert_file_contains firstboot_release_gate.service 'firstboot_release_gate_hand
 assert_file_contains firstboot_release_gate.service 'firstboot_release_gate_handoff_index.py --output /var/log/firstboot_release_gate.handoff_index.md --format markdown'
 assert_file_contains firstboot_release_gate.service 'firstboot_release_gate_handoff_verify.py --index /var/log/firstboot_release_gate.handoff_index.json --artifact-root /var/log --output /var/log/firstboot_release_gate.handoff_verify.json'
 assert_file_contains firstboot_release_gate.service 'firstboot_release_gate_handoff_verify.py --index /var/log/firstboot_release_gate.handoff_index.json --artifact-root /var/log --output /var/log/firstboot_release_gate.handoff_verify.md --format markdown'
-assert_file_contains firstboot_release_gate.service 'firstboot_release_gate_handoff_freshness.py --input /var/log/firstboot_release_gate.handoff_verify.json --output /var/log/firstboot_release_gate.handoff_freshness.json --max-artifact-age-minutes 240'
+assert_file_contains firstboot_release_gate.service 'firstboot_release_gate_handoff_freshness.py --input /var/log/firstboot_release_gate.handoff_verify.json --output /var/log/firstboot_release_gate.handoff_freshness.json --summary /var/log/firstboot_release_gate.handoff_freshness.summary.env --max-artifact-age-minutes 240'
 assert_file_contains firstboot_release_gate.service 'firstboot_release_gate_handoff_freshness.py --input /var/log/firstboot_release_gate.handoff_verify.json --output /var/log/firstboot_release_gate.handoff_freshness.md --format markdown --max-artifact-age-minutes 240'
 
 assert_file_contains firstboot_release_gate.timer 'OnBootSec=15min'
