@@ -124,6 +124,7 @@ core_modules=(
     "firstboot_release_gate_handoff_env_policy_smoke.py"
     "firstboot_final_readiness.py"
     "firstboot_final_readiness_smoke.py"
+    "firstboot_final_readiness_manifest.py"
     "firstboot_release_gate.service"
     "firstboot_release_gate.timer"
     "host_vm_policy_restore_execute.py"
