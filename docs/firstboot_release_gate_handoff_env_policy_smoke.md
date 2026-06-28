@@ -35,7 +35,23 @@ python3 firstboot_release_gate_handoff_env_policy_smoke.py \
   --output /var/log/firstboot_release_gate.handoff_env_policy_smoke.md
 ```
 
+Write a shell-safe summary sidecar:
+
+```bash
+python3 firstboot_release_gate_handoff_env_policy_smoke.py \
+  --input /var/log/firstboot_release_gate.handoff_env_policy.summary.env \
+  --format json \
+  --output /var/log/firstboot_release_gate.handoff_env_policy_smoke.json \
+  --summary /var/log/firstboot_release_gate.handoff_env_policy_smoke.summary.env
+```
+
 Use `--require-pass` when a non-zero exit is desired unless the smoke contract is approved.
+
+## Summary sidecar
+
+The optional `.summary.env` output uses the `FIRSTBOOT_HANDOFF_ENV_POLICY_SMOKE_` prefix and contains only compact aggregate fields: pass/fail status, decision, release gate, source component, source decision, source release gate, source privacy scope, blocker count, blockers, total artifact count, privacy scope, and safe-default statement.
+
+The sidecar is intended for release dashboards or chained aggregate posture readers. It does not include raw logs, packet captures, private identifiers, credentials, IDS datasets, model binaries, or telemetry payloads.
 
 ## Firstboot service artifacts
 
@@ -43,6 +59,7 @@ Use `--require-pass` when a non-zero exit is desired unless the smoke contract i
 
 - `/var/log/firstboot_release_gate.handoff_env_policy_smoke.json`
 - `/var/log/firstboot_release_gate.handoff_env_policy_smoke.md`
+- `/var/log/firstboot_release_gate.handoff_env_policy_smoke.summary.env`
 
 These files are passive derivatives. They do not replace the authoritative release gate, bundle, digest, handoff index, handoff verification, freshness, summary smoke, status-reader, or env-policy JSON/Markdown artifacts.
 
@@ -56,7 +73,7 @@ It fails closed when the contract is missing, malformed, internally inconsistent
 
 The validator consumes only aggregate handoff summary values. It avoids raw logs, packet captures, private identifiers, credentials, model binaries, IDS datasets, and live host/VM state. It opens no sockets and performs no privileged system mutation.
 
-The firstboot service wiring writes only derived JSON/Markdown smoke artifacts under `/var/log` using the existing service write path and keeps the same sandbox stance: no new privileges, no capabilities, protected homes, protected kernel/control-group surfaces, and native syscall architecture restrictions.
+The firstboot service wiring writes only derived JSON/Markdown/shell-safe smoke artifacts under `/var/log` using the existing service write path and keeps the same sandbox stance: no new privileges, no capabilities, protected homes, protected kernel/control-group surfaces, and native syscall architecture restrictions.
 
 This supports audit-review expectations from NIST-style audit review and reporting controls and CISA-style visibility/analytics/automation goals while keeping the artifact aggregate-only and least-privilege.
 
@@ -67,16 +84,17 @@ This supports audit-review expectations from NIST-style audit review and reporti
 - Additive and safe to ignore when workflows prefer env-policy JSON or Markdown.
 - The env-policy JSON remains the authoritative policy report.
 - The smoke validator preserves the fail-closed decision from the env-policy summary sidecar.
+- The `.summary.env` output is optional and preserves existing text, JSON, Markdown, and `--require-pass` behavior.
 
 ## Rollback
 
 1. Stop calling `firstboot_release_gate_handoff_env_policy_smoke.py` from local release or handoff workflows.
 2. Remove the helper from `build_custom_iso.sh` packaging if custom images should not include it.
-3. Remove the optional `firstboot_release_gate.service` `ExecStartPost=` lines that write env-policy smoke JSON or Markdown artifacts.
+3. Remove the optional `firstboot_release_gate.service` `ExecStartPost=` lines that write env-policy smoke JSON, Markdown, or summary env artifacts.
 4. Delete optional generated env-policy smoke artifacts.
 5. Keep upstream firstboot release-gate and handoff artifacts unchanged.
 
 ## Follow-up work
 
 - Add a broader aggregate posture rollup that combines env-policy smoke, IDS health evidence, model-audit gate state, and host/VM communication policy evidence.
-- Add a dashboard reader that consumes JSON smoke output while preserving aggregate-only privacy boundaries.
+- Add a dashboard reader that consumes JSON or summary-env smoke output while preserving aggregate-only privacy boundaries.

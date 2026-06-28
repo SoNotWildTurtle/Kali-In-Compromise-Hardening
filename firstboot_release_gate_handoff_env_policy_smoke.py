@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # MINC - Defensive firstboot release-gate handoff env-policy summary smoke validator.
+# Purpose: validate aggregate-only env-policy summary evidence for safe operator handoff.
 
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ from typing import Any
 
 DEFAULT_INPUT = Path('/var/log/firstboot_release_gate.handoff_env_policy.summary.env')
 SOURCE_PREFIX = 'FIRSTBOOT_HANDOFF_ENV_POLICY_'
+SUMMARY_PREFIX = 'FIRSTBOOT_HANDOFF_ENV_POLICY_SMOKE'
 EXPECTED_PRIVACY_SCOPE = 'aggregate_release_gate_handoff_env_policy_only'
 EXPECTED_UPSTREAM_PRIVACY_SCOPE = 'aggregate_release_gate_handoff_status_reader_only'
 REQUIRED_KEYS = {
@@ -27,6 +29,10 @@ REQUIRED_KEYS = {
     'FIRSTBOOT_HANDOFF_ENV_POLICY_PRIVACY_SCOPE',
     'FIRSTBOOT_HANDOFF_ENV_POLICY_SAFE_DEFAULT',
 }
+
+
+def shell_quote(value: object) -> str:
+    return "'" + str(value).replace("'", "'\\''") + "'"
 
 
 def read_env(path: Path) -> tuple[dict[str, str], list[str]]:
@@ -147,6 +153,25 @@ def build_report(values: dict[str, str], initial_issues: list[str]) -> dict[str,
     }
 
 
+def render_summary_env(report: dict[str, Any]) -> str:
+    blockers = ','.join(report['blockers']) if report['blockers'] else 'none'
+    values = {
+        f'{SUMMARY_PREFIX}_OK': '1' if report['ok'] else '0',
+        f'{SUMMARY_PREFIX}_DECISION': report['decision'],
+        f'{SUMMARY_PREFIX}_RELEASE_GATE': report['release_gate'],
+        f'{SUMMARY_PREFIX}_SOURCE_COMPONENT': report['component'],
+        f'{SUMMARY_PREFIX}_SOURCE_DECISION': report['source_values']['decision'],
+        f'{SUMMARY_PREFIX}_SOURCE_RELEASE_GATE': report['source_values']['release_gate'],
+        f'{SUMMARY_PREFIX}_SOURCE_PRIVACY_SCOPE': report['source_values']['privacy_scope'],
+        f'{SUMMARY_PREFIX}_BLOCKER_COUNT': len(report['blockers']),
+        f'{SUMMARY_PREFIX}_BLOCKERS': blockers,
+        f'{SUMMARY_PREFIX}_TOTAL_ARTIFACTS': report['source_values']['total_artifacts'],
+        f'{SUMMARY_PREFIX}_PRIVACY_SCOPE': report['privacy_scope'],
+        f'{SUMMARY_PREFIX}_SAFE_DEFAULT': report['safe_default'],
+    }
+    return ''.join(f'{key}={shell_quote(value)}\n' for key, value in values.items())
+
+
 def render_markdown(report: dict[str, Any]) -> str:
     lines = [
         '# Firstboot release-gate handoff env-policy smoke',
@@ -181,6 +206,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--input', default=str(DEFAULT_INPUT))
     parser.add_argument('--format', choices=('text', 'json', 'markdown'), default='text')
     parser.add_argument('--output')
+    parser.add_argument('--summary', help='Optional shell-safe summary env sidecar output path.')
     parser.add_argument('--require-pass', action='store_true')
     return parser.parse_args()
 
@@ -196,6 +222,10 @@ def main() -> int:
         output.write_text(rendered, encoding='utf-8')
     else:
         print(rendered, end='')
+    if args.summary:
+        summary = Path(args.summary)
+        summary.parent.mkdir(parents=True, exist_ok=True)
+        summary.write_text(render_summary_env(report), encoding='utf-8')
     if args.require_pass and not report['ok']:
         return 10
     return 0
