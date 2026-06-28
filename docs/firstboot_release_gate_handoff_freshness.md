@@ -23,6 +23,15 @@ firstboot_release_gate_handoff_freshness.py \
 
 The default policy allows evidence up to 1440 minutes old. Release, recovery, or firstboot workflows can set a shorter `--max-artifact-age-minutes` window when promoted evidence must be recent.
 
+## Firstboot service integration
+
+Custom ISO builds now package the helper alongside the firstboot release-gate bundle tools. `firstboot_release_gate.service` refreshes both artifacts after handoff verification succeeds:
+
+- `/var/log/firstboot_release_gate.handoff_freshness.json`
+- `/var/log/firstboot_release_gate.handoff_freshness.md`
+
+The service uses the same 240-minute policy window as the release gate timer path so operator handoff bundles can detect stale copied evidence without reading raw telemetry, opening sockets, changing firewall rules, approving restores, modifying IDS models, or altering host/VM state.
+
 ## Output contract
 
 The JSON output contains:
@@ -46,14 +55,13 @@ Freshness gating helps prevent stale copied handoff bundles from being treated a
 
 ## Compatibility
 
-This is additive. Existing release-gate, status, bundle manifest, operator digest, handoff index, and handoff verification schemas remain unchanged. Consumers that do not need strict freshness evidence can ignore this helper.
+This is additive. Existing release-gate, status, bundle manifest, operator digest, handoff index, and handoff verification schemas remain unchanged. Consumers that do not need strict freshness evidence can ignore this helper. Existing custom ISO build arguments remain unchanged; the helper is simply included in the packaged firstboot tool set.
 
 ## Rollback
 
-Delete the generated `firstboot_release_gate.handoff_freshness.json` or `.md` artifact, or revert this additive helper, docs, changelog, and tests. The upstream firstboot release gate, status, bundle manifest, operator digest, handoff index, and handoff verification remain unchanged.
+Delete the generated `firstboot_release_gate.handoff_freshness.json` or `.md` artifact, or revert this additive helper, docs, changelog, service wiring, packaging entry, and tests. The upstream firstboot release gate, status, bundle manifest, operator digest, handoff index, and handoff verification remain unchanged.
 
 ## Follow-up work
 
-- Package the freshness helper into custom ISO builds after operators settle on default policy windows.
-- Add optional service refresh lines that emit JSON and Markdown freshness artifacts after handoff verification.
 - Add release workflow integration that runs `--require-fresh` against promoted handoff archives.
+- Feed freshness decision fields into any aggregate posture dashboard or release-promotion checklist.
