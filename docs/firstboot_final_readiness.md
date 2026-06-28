@@ -81,7 +81,7 @@ Rollback is removal of this optional helper from packaging and firstboot service
 
 Rollback for the smoke helper is removal of `firstboot_final_readiness_smoke.py` from packaging and removal of the final-readiness smoke `ExecStartPost=` lines from `firstboot_release_gate.service`. The final-readiness JSON, Markdown, and `.summary.env` artifacts remain authoritative.
 
-Rollback for the manifest helper is removal of `firstboot_final_readiness_manifest.py` from packaging and removal of the final-readiness manifest `ExecStartPost=` lines from `firstboot_release_gate.service`. The final-readiness and final-readiness smoke JSON, Markdown, and `.summary.env` artifacts remain authoritative.
+rollback for the manifest helper is removal of `firstboot_final_readiness_manifest.py` from packaging and removal of the final-readiness manifest `ExecStartPost=` lines from `firstboot_release_gate.service`. The final-readiness and final-readiness smoke JSON, Markdown, and `.summary.env` artifacts remain authoritative.
 
 ## Security notes
 
