@@ -51,9 +51,17 @@ python3 firstboot_final_readiness_operator_verdict.py \
     --summary "$tmpdir/operator_verdict.summary.env" \
     --require-pass
 
+python3 firstboot_final_readiness_operator_verdict.py \
+    --input "$tmpdir/contract_seal_smoke.summary.env" \
+    --format markdown \
+    --output "$tmpdir/operator_verdict.md" \
+    --require-pass
+
 grep -q '"operator_verdict": "promote"' "$tmpdir/operator_verdict.json"
 grep -q "FIRSTBOOT_FINAL_READINESS_OPERATOR_VERDICT_OK='1'" "$tmpdir/operator_verdict.summary.env"
 grep -q "FIRSTBOOT_FINAL_READINESS_OPERATOR_VERDICT_VERDICT='promote'" "$tmpdir/operator_verdict.summary.env"
+grep -q 'Operator verdict: `promote`' "$tmpdir/operator_verdict.md"
+grep -q 'Privacy scope: `aggregate_firstboot_final_readiness_operator_verdict_only`' "$tmpdir/operator_verdict.md"
 
 sed "s/aggregate_firstboot_final_readiness_contract_seal_smoke_only/raw_packet_scope/" "$tmpdir/contract_seal_smoke.summary.env" > "$tmpdir/bad_scope.summary.env"
 if python3 firstboot_final_readiness_operator_verdict.py --input "$tmpdir/bad_scope.summary.env" --require-pass; then
