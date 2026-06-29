@@ -12,7 +12,7 @@ The smoke helper adds a second aggregate-only assertion layer for formatting-sen
 
 ## Security boundary
 
-Both helpers are read-only and aggregate-only. They do not source shell content, inspect raw telemetry, read packet captures, open sockets, alter firewall rules, change services, mutate model or dataset files, approve restore execution, or modify host or VM state.
+Both helpers are read-only and aggregate-only. Each helper does not source shell content, inspect raw telemetry, read packet captures, open sockets, alter firewall rules, change services, mutate model or dataset files, approve restore execution, or modify host or VM state.
 
 This follows the repository's secure-by-default direction and maps cleanly to NIST SP 800-53 Rev. 5 control themes for Audit and Accountability, Assessment/Authorization/Monitoring, Configuration Management, System and Communications Protection, System and Information Integrity, and Supply Chain Risk Management.
 
