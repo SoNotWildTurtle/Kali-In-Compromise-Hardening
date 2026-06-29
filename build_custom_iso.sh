@@ -134,6 +134,7 @@ core_modules=(
     "firstboot_final_readiness_operator_bundle_index.py"
     "firstboot_final_readiness_release_receipt.py"
     "firstboot_final_readiness_release_receipt_smoke.py"
+    "firstboot_final_readiness_release_receipt_smoke_index.py"
     "firstboot_release_gate.service"
     "firstboot_release_gate.timer"
     "host_vm_policy_restore_execute.py"
@@ -258,16 +259,16 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/$FIRSTBOOT
+ExecStart=/usr/local/bin/${FIRSTBOOT}
 RemainAfterExit=yes
+User=root
 
 [Install]
 WantedBy=multi-user.target
 SERVICE
 
-chmod +x "$INSTALL_DIR"/*.sh "$INSTALL_DIR"/*.py 2>/dev/null || true
-
 mkisofs -o "$OUT_ISO" -b isolinux/isolinux.bin -c isolinux/boot.cat \
     -no-emul-boot -boot-load-size 4 -boot-info-table "$EXTRACT_DIR"
 isohybrid "$OUT_ISO"
-echo "Custom Kali ISO written to $OUT_ISO"
+
+echo "Custom Kali ISO created at $OUT_ISO"
