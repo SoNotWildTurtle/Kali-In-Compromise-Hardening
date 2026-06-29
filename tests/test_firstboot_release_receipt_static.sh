@@ -90,6 +90,6 @@ grep -q 'firstboot_final_readiness_release_receipt.py' build_custom_iso.sh
 grep -q 'final_readiness_release_receipt.json' firstboot_release_gate.service
 grep -q 'final_readiness_release_receipt.summary.env' firstboot_release_gate.service
 grep -q 'firstboot_final_readiness_release_receipt.md' docs/firstboot_final_readiness_release_receipt.md
-grep -q 'release receipt helper is additive and passive' CHANGELOG.md
+grep -q 'The helper is intentionally passive and aggregate-only' docs/firstboot_final_readiness_release_receipt.md
 
 echo "firstboot release receipt static checks passed"
