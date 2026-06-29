@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added `firstboot_final_readiness_release_receipt_handoff_digest_smoke_index.py`, a passive aggregate-only index for final firstboot release-receipt handoff digest smoke evidence that validates the quoted smoke summary contract and records expected JSON, Markdown, and summary artifacts without changing host, VM, IDS, approval, restore, network, firewall, or service state.
+- Packaged the handoff digest smoke index helper, wired `firstboot_release_gate.service` to refresh JSON, Markdown, and `.summary.env` index artifacts, and added documentation plus static coverage for helper execution, packaging, service wiring, sandboxing, passive safety wording, and rollback notes.
 - Added `firstboot_final_readiness_operator_bundle_index.py`, a passive operator-facing index for final firstboot readiness bundle artifacts that inventories required JSON/Markdown/summary evidence without changing host, VM, IDS, approval, restore, network, firewall, or service state.
 - Packaged the operator-bundle index helper, wired `firstboot_release_gate.service` to refresh JSON, Markdown, and `.summary.env` index artifacts, and added static coverage for helper execution, packaging, service wiring, and passive safety wording.
 - Added `firstboot_final_readiness_manifest_smoke.py`, a passive aggregate-only smoke gate for the final-readiness manifest `.summary.env` sidecar that validates the quoted `FIRSTBOOT_FINAL_READINESS_MANIFEST_*` contract without sourcing shell content.
@@ -80,6 +82,8 @@
 
 ### Security
 
+- The handoff digest smoke index helper is additive and passive: it reads only the quoted aggregate handoff digest smoke summary, emits derived index evidence, and does not source shell content, inspect raw telemetry, open sockets, change firewall rules, mutate services, approve restores, or modify host/VM state.
+- The index reports missing, malformed, blocker-bearing, privacy-scope-mismatched, or low-artifact smoke summaries as review blockers, allowing firstboot promotion gates to stop on incomplete evidence without attempting automatic repair or weakening controls.
 - The operator-bundle index helper is additive and passive: it reads only the quoted aggregate operator-bundle smoke summary and expected aggregate artifact metadata, emits review evidence, and does not source shell content, inspect raw telemetry, open sockets, change firewall rules, mutate services, approve restores, or modify host/VM state.
 - The index reports missing or zero-byte artifacts as review blockers, allowing release gates and recovery handoffs to stop on incomplete firstboot evidence without attempting automatic repair or weakening controls.
 - The final-readiness manifest smoke helper is additive and passive: it validates only the quoted aggregate final-readiness manifest summary sidecar, emits derived smoke evidence, and does not source shell content, inspect raw telemetry, open sockets, change firewall rules, mutate services, approve restores, or modify host/VM state.
