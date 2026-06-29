@@ -15,7 +15,7 @@ SOURCE_PREFIX = 'FIRSTBOOT_FINAL_READINESS_MANIFEST_SMOKE_'
 SUMMARY_PREFIX = 'FIRSTBOOT_FINAL_READINESS_CONTRACT_SEAL'
 EXPECTED_SOURCE_COMPONENT = 'firstboot_final_readiness_manifest_smoke'
 EXPECTED_SOURCE_PRIVACY_SCOPE = 'aggregate_firstboot_final_readiness_manifest_smoke_only'
-EXPECTED_PRIVACY_SCOPE = 'aggregate_firstboot_contract_seal_only'
+EXPECTED_PRIVACY_SCOPE = 'aggregate_firstboot_final_readiness_manifest_smoke_only'
 REQUIRED_KEYS = {
     'FIRSTBOOT_FINAL_READINESS_MANIFEST_SMOKE_OK',
     'FIRSTBOOT_FINAL_READINESS_MANIFEST_SMOKE_DECISION',
