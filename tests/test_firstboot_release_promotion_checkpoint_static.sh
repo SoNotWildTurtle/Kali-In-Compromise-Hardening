@@ -19,5 +19,5 @@ grep -q 'Rollback' docs/firstboot_final_readiness_release_promotion_checkpoint.m
 grep -q 'passive_release_promotion_checkpoint_only_no_host_vm_firewall_service_network_restore_or_model_changes' firstboot_final_readiness_release_promotion_checkpoint.py
 grep -q 'No live firewall, service, host, VM, IDS, approval, restore, model, dataset, account, credential, or network state requires rollback.' firstboot_final_readiness_release_promotion_checkpoint.py
 
-grep -q 'firstboot_final_readiness_release_promotion_checkpoint.py' CHANGELOG.md
-grep -q 'release promotion checkpoint' README.md
+grep -q 'firstboot_final_readiness_release_promotion_checkpoint.py' docs/changelog_release_promotion_checkpoint.md
+grep -q 'release promotion checkpoint' docs/changelog_release_promotion_checkpoint.md
