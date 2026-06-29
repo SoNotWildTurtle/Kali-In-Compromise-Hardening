@@ -80,6 +80,6 @@ grep -q 'final_readiness_release_receipt_smoke.json' firstboot_release_gate.serv
 grep -q 'final_readiness_release_receipt_smoke.summary.env' firstboot_release_gate.service
 grep -q 'firstboot_final_readiness_release_receipt_smoke.py' docs/firstboot_final_readiness_release_receipt_smoke.md
 grep -q 'It is intentionally passive and aggregate-only' docs/firstboot_final_readiness_release_receipt_smoke.md
-grep -q 'release receipt smoke' CHANGELOG.md
+grep -q 'release receipt smoke' changelog.d/firstboot_release_receipt_smoke.md
 
 echo "firstboot release receipt smoke static checks passed"
