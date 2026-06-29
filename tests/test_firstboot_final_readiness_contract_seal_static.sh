@@ -17,7 +17,7 @@ grep -q 'read-only final readiness contract seal helper' firstboot_final_readine
 grep -q 'return 10' firstboot_final_readiness_contract_seal.py
 
 grep -q 'read-only and aggregate-only' docs/firstboot_final_readiness_contract_seal.md
-grep -q 'must not source shell content' docs/firstboot_final_readiness_contract_seal.md
+grep -q 'does not source shell content' docs/firstboot_final_readiness_contract_seal.md
 grep -q 'FIRSTBOOT_FINAL_READINESS_CONTRACT_SEAL_' docs/firstboot_final_readiness_contract_seal.md
 grep -q 'Rollback is removal' docs/firstboot_final_readiness_contract_seal.md
 grep -q 'NIST SP 800-53 Rev. 5' docs/firstboot_final_readiness_contract_seal.md
