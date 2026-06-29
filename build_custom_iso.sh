@@ -129,6 +129,7 @@ core_modules=(
     "firstboot_final_readiness_contract_seal.py"
     "firstboot_final_readiness_contract_seal_smoke.py"
     "firstboot_final_readiness_operator_verdict.py"
+    "firstboot_final_readiness_operator_bundle.py"
     "firstboot_release_gate.service"
     "firstboot_release_gate.timer"
     "host_vm_policy_restore_execute.py"
