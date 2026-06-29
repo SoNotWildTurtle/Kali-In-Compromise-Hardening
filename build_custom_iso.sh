@@ -136,6 +136,7 @@ core_modules=(
     "firstboot_final_readiness_release_receipt_smoke.py"
     "firstboot_final_readiness_release_receipt_smoke_index.py"
     "firstboot_final_readiness_release_receipt_handoff_digest.py"
+    "firstboot_final_readiness_release_receipt_handoff_digest_smoke.py"
     "firstboot_release_gate.service"
     "firstboot_release_gate.timer"
     "host_vm_policy_restore_execute.py"
