@@ -10,6 +10,7 @@ machine-readable JSON or operator-friendly Markdown evidence.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -18,6 +19,8 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA_VERSION = 1
+VALIDATOR_VERSION = "1.1.0"
+MANIFEST_SCHEMA_VERSION = 1
 VALID_MODES = {"passive_review", "firstboot_release_gate", "operator_handoff"}
 FORBIDDEN_FIELDS = {
     "raw_logs",
@@ -35,6 +38,21 @@ FORBIDDEN_FIELDS = {
 POLICY_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{2,80}$")
 ARTIFACT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{2,100}$")
 ARTIFACT_PATH_RE = re.compile(r"^/(var/log|var/lib)/[A-Za-z0-9._/-]+$")
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _sha256_file(path: Path) -> str | None:
+    try:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return None
 
 
 def _load_json(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
@@ -185,13 +203,15 @@ def _build_evidence(profile_path: Path, profile: dict[str, Any] | None, errors: 
     required_artifacts = [item.get("name") for item in artifacts if isinstance(item, dict) and item.get("required") is True]
     return {
         "validator": "host_vm_policy_validator.py",
+        "validator_version": VALIDATOR_VERSION,
         "schema_version": SCHEMA_VERSION,
         "profile_path": str(profile_path),
+        "profile_sha256": _sha256_file(profile_path),
         "policy_id": policy_id,
         "valid": not errors,
         "errors": errors,
         "summary": {
-            "checked_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "checked_at_utc": _utc_now(),
             "mode": profile.get("mode") if isinstance(profile, dict) else None,
             "required_artifacts": required_artifacts,
             "remote_host_mutation_allowed": (
@@ -210,12 +230,45 @@ def _build_evidence(profile_path: Path, profile: dict[str, Any] | None, errors: 
     }
 
 
+def _build_manifest(evidence: dict[str, Any], evidence_path: Path | None, evidence_format: str) -> dict[str, Any]:
+    """Build a compact manifest that lets later gates tie evidence to a profile hash."""
+    return {
+        "manifest_schema_version": MANIFEST_SCHEMA_VERSION,
+        "generated_at_utc": _utc_now(),
+        "validator": evidence["validator"],
+        "validator_version": evidence["validator_version"],
+        "profile_path": evidence["profile_path"],
+        "profile_sha256": evidence["profile_sha256"],
+        "policy_id": evidence.get("policy_id"),
+        "mode": evidence["summary"].get("mode"),
+        "valid": evidence["valid"],
+        "evidence": {
+            "format": evidence_format,
+            "path": str(evidence_path) if evidence_path else "stdout",
+            "aggregate_only": evidence["summary"].get("aggregate_only"),
+            "required_artifacts": evidence["summary"].get("required_artifacts", []),
+        },
+        "safety": {
+            "passive_only": True,
+            "mutates_host_or_vm_state": False,
+            "reads_raw_telemetry": False,
+            "remote_host_mutation_allowed": evidence["summary"].get("remote_host_mutation_allowed"),
+        },
+        "handoff": {
+            "follow_up_owner": "operator",
+            "rollback_scope": "revert generated manifest/evidence files or checked-in docs only; no live host or VM state rollback",
+            "next_step": "Feed this manifest into firstboot or release aggregation after the consuming gate has static coverage.",
+        },
+    }
+
+
 def _to_markdown(evidence: dict[str, Any]) -> str:
     status = "PASS" if evidence["valid"] else "FAIL"
     lines = [
         f"# Host/VM Policy Validation: {status}",
         "",
         f"- Profile: `{evidence['profile_path']}`",
+        f"- Profile SHA-256: `{evidence.get('profile_sha256')}`",
         f"- Policy ID: `{evidence.get('policy_id')}`",
         f"- Mode: `{evidence['summary'].get('mode')}`",
         f"- Passive only: `{evidence['safety']['passive_only']}`",
@@ -239,6 +292,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("profile", type=Path, help="Path to a host/VM policy JSON profile")
     parser.add_argument("--format", choices=("json", "markdown"), default="json", help="Evidence output format")
     parser.add_argument("--output", type=Path, help="Optional evidence output path")
+    parser.add_argument(
+        "--manifest-output",
+        type=Path,
+        help="Optional JSON manifest path recording validator version, profile hash, evidence path, and handoff notes",
+    )
     args = parser.parse_args(argv)
 
     profile, load_errors = _load_json(args.profile)
@@ -250,6 +308,11 @@ def main(argv: list[str] | None = None) -> int:
         args.output.write_text(rendered, encoding="utf-8")
     else:
         sys.stdout.write(rendered)
+
+    if args.manifest_output:
+        manifest = _build_manifest(evidence, args.output, args.format)
+        args.manifest_output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
     return 0 if evidence["valid"] else 2
 
 
