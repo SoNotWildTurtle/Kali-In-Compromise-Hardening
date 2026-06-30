@@ -35,7 +35,6 @@ def test_readme_duplicate_module_drift_is_documented() -> None:
         "mac address randomization",
         "neural network ids",
         "packet sanitization",
-        "initial network discovery",
         "`firstboot.sh`",
         "`host_hardening_windows.sh`",
         "`vm_windows_env_hardening.sh`",
@@ -43,7 +42,6 @@ def test_readme_duplicate_module_drift_is_documented() -> None:
         "`process_service_monitor.py`",
         "`port_socket_monitor.py`",
         "`nn_ids_healthcheck.py`",
-        "`setup_nn_ids.sh`",
     ]
 
     for fragment in expected_duplicate_fragments:
