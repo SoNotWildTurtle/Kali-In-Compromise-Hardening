@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SoNotWildTurtle/Kali-In-Compromise-Hardening/docs/host_vm_policy_configuration_schema.json",
+  "title": "Host VM Policy Configuration",
+  "description": "Passive schema for validating host/VM firstboot policy review settings before release promotion. The schema is documentation and static-validation only; it does not mutate host, VM, firewall, service, network, IDS, approval, restore, model, dataset, credential, or account state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy_id",
+    "mode",
+    "authorization",
+    "freshness",
+    "artifacts",
+    "privacy_boundaries",
+    "rollback"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "policy_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{2,80}$"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "passive_review",
+        "firstboot_release_gate",
+        "operator_handoff"
+      ]
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorized_defensive_use_only",
+        "operator_acknowledgement_required",
+        "remote_host_mutation_allowed"
+      ],
+      "properties": {
+        "authorized_defensive_use_only": {
+          "type": "boolean",
+          "const": true
+        },
+        "operator_acknowledgement_required": {
+          "type": "boolean",
+          "const": true
+        },
+        "remote_host_mutation_allowed": {
+          "type": "boolean",
+          "const": false
+        }
+      }
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "max_artifact_age_minutes",
+        "future_clock_skew_tolerance_seconds"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "max_artifact_age_minutes": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0,
+          "maximum": 10080
+        },
+        "future_clock_skew_tolerance_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3600,
+          "default": 300
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "max_artifact_age_minutes": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": false
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "max_artifact_age_minutes": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "path",
+          "required",
+          "producer"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{2,100}$"
+          },
+          "path": {
+            "type": "string",
+            "pattern": "^/(var/log|var/lib)/[A-Za-z0-9._/-]+$"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "producer": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 120
+          }
+        }
+      }
+    },
+    "privacy_boundaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "aggregate_only",
+        "forbidden_fields"
+      ],
+      "properties": {
+        "aggregate_only": {
+          "type": "boolean",
+          "const": true
+        },
+        "forbidden_fields": {
+          "type": "array",
+          "minItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "raw_logs",
+              "packets",
+              "captures",
+              "credentials",
+              "hostnames",
+              "usernames",
+              "secrets",
+              "model_binaries",
+              "datasets",
+              "private_keys",
+              "tokens"
+            ]
+          }
+        }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revert_files_only",
+        "live_state_rollback_required",
+        "notes"
+      ],
+      "properties": {
+        "revert_files_only": {
+          "type": "boolean",
+          "const": true
+        },
+        "live_state_rollback_required": {
+          "type": "boolean",
+          "const": false
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 20,
+          "maxLength": 500
+        }
+      }
+    }
+  }
+}
