@@ -6,8 +6,10 @@ on:
       - 'host_vm_policy_firstboot_dry_run.py'
       - 'host_vm_policy_firstboot_handoff_gate.py'
       - 'host_vm_policy_firstboot_release_receipt.py'
+      - 'host_vm_policy_firstboot_release_summary.py'
       - 'tests/test_host_vm_policy_firstboot_handoff_gate_static.sh'
       - 'tests/test_host_vm_policy_firstboot_release_receipt_static.sh'
+      - 'tests/test_host_vm_policy_firstboot_release_summary_static.sh'
       - 'tests/test_firstboot_handoff_release_gate_workflow_static.sh'
       - '.github/workflows/firstboot-handoff-release-gate.yml'
   pull_request:
@@ -15,8 +17,10 @@ on:
       - 'host_vm_policy_firstboot_dry_run.py'
       - 'host_vm_policy_firstboot_handoff_gate.py'
       - 'host_vm_policy_firstboot_release_receipt.py'
+      - 'host_vm_policy_firstboot_release_summary.py'
       - 'tests/test_host_vm_policy_firstboot_handoff_gate_static.sh'
       - 'tests/test_host_vm_policy_firstboot_release_receipt_static.sh'
+      - 'tests/test_host_vm_policy_firstboot_release_summary_static.sh'
       - 'tests/test_firstboot_handoff_release_gate_workflow_static.sh'
       - '.github/workflows/firstboot-handoff-release-gate.yml'
   workflow_dispatch:
@@ -37,6 +41,7 @@ jobs:
         run: |
           bash tests/test_host_vm_policy_firstboot_handoff_gate_static.sh
           bash tests/test_host_vm_policy_firstboot_release_receipt_static.sh
+          bash tests/test_host_vm_policy_firstboot_release_summary_static.sh
 
       - name: Build hosted aggregate handoff bundle
         run: |
@@ -172,6 +177,19 @@ jobs:
           grep -q '^decision=release_receipt_blocked$' /tmp/firstboot-handoff-gate-blocked/firstboot_release_receipt.blocked.report
           grep -q 'gate check not passing: validation_valid' /tmp/firstboot-handoff-gate-blocked/firstboot_release_receipt.blocked.report
 
+      - name: Build release-readiness summary
+        run: |
+          python3 host_vm_policy_firstboot_release_summary.py \
+            /tmp/firstboot-handoff-gate/firstboot_release_receipt.json \
+            --expected-blocked-receipt /tmp/firstboot-handoff-gate-blocked/firstboot_release_receipt.blocked.json \
+            --strict \
+            --output /tmp/firstboot-handoff-gate/firstboot_release_summary.json \
+            --report /tmp/firstboot-handoff-gate/firstboot_release_summary.report
+          grep -q '"decision": "summary_ready"' /tmp/firstboot-handoff-gate/firstboot_release_summary.json
+          grep -q '^decision=summary_ready$' /tmp/firstboot-handoff-gate/firstboot_release_summary.report
+          grep -q '^expected_blocked_decision=release_receipt_blocked$' /tmp/firstboot-handoff-gate/firstboot_release_summary.report
+          grep -q '^blocking_issue_count=0$' /tmp/firstboot-handoff-gate/firstboot_release_summary.report
+
       - name: Upload handoff gate evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -183,6 +201,8 @@ jobs:
             /tmp/firstboot-handoff-gate/firstboot_handoff_gate.report
             /tmp/firstboot-handoff-gate/firstboot_release_receipt.json
             /tmp/firstboot-handoff-gate/firstboot_release_receipt.report
+            /tmp/firstboot-handoff-gate/firstboot_release_summary.json
+            /tmp/firstboot-handoff-gate/firstboot_release_summary.report
           if-no-files-found: error
 
       - name: Upload expected blocked receipt fixture
