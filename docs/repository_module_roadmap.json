@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "artifact": "repository_module_roadmap",
+  "scope": "passive documentation-only roadmap for Kali-In-Compromise-Hardening",
+  "safety_model": {
+    "default_behavior": "read-only planning evidence",
+    "must_not_change": [
+      "host state",
+      "VM state",
+      "firewall rules",
+      "network interfaces",
+      "services",
+      "approval state",
+      "restore state",
+      "model files",
+      "datasets",
+      "credentials",
+      "accounts"
+    ],
+    "required_boundaries": [
+      "authorized defensive use only",
+      "least privilege",
+      "reversible changes",
+      "no persistence or evasion",
+      "no raw telemetry or secrets in roadmap artifacts"
+    ]
+  },
+  "modules": [
+    {
+      "id": "kali_guest_firstboot_hardening",
+      "owner_role": "kali guest hardening maintainer",
+      "primary_files": [
+        "kali-preseed.cfg",
+        "kali-preseed-single.cfg",
+        "firstboot.sh",
+        "firstboot_single.sh",
+        "vm_pro_hardening.sh"
+      ],
+      "generated_artifacts": [
+        "/var/log/firstboot_release_gate.json",
+        "/var/log/firstboot_release_gate.md",
+        "/var/log/firstboot_release_gate.summary.env"
+      ],
+      "validation_focus": [
+        "preseed package coverage",
+        "firstboot wiring",
+        "systemd sandboxing",
+        "passive release-gate artifacts",
+        "rollback notes"
+      ],
+      "rollback_procedure": "Disable new firstboot wiring, remove packaged helper references, and fall back to the previous preseed/firstboot scripts without changing live host or VM state."
+    },
+    {
+      "id": "host_vm_policy_and_isolation",
+      "owner_role": "host and hypervisor isolation maintainer",
+      "primary_files": [
+        "host_hardening_windows.sh",
+        "windows_hardening.ps1",
+        "host_hardening_linux.sh",
+        "vm_windows_env_hardening.sh",
+        "vm_linux_env_hardening.sh",
+        "host_vm_policy_firstboot_manifest.py",
+        "host_vm_policy_firstboot_handoff.py"
+      ],
+      "generated_artifacts": [
+        "/var/log/host_vm_policy_firstboot_manifest.json",
+        "/var/log/host_vm_policy_firstboot_handoff.md"
+      ],
+      "validation_focus": [
+        "explicit authorization wording",
+        "credential handling guidance",
+        "transport encryption assumptions",
+        "hypervisor-aware passive review",
+        "least-privilege host/VM boundaries"
+      ],
+      "rollback_procedure": "Remove or disable only the new passive policy evidence helper or documentation path; do not loosen host firewall, remoting, SSH, or VM isolation controls."
+    },
+    {
+      "id": "nn_ids_posture_pipeline",
+      "owner_role": "NN IDS posture and release-gate maintainer",
+      "primary_files": [
+        "setup_nn_ids.sh",
+        "nn_ids_setup.py",
+        "nn_ids_service.py",
+        "nn_ids_capture.py",
+        "nn_ids_retrain.py",
+        "nn_ids_health_evidence.py",
+        "nn_ids_drift_evidence.py",
+        "nn_ids_drift_triage.py",
+        "nn_ids_posture_bundle_manifest.py",
+        "nn_ids_posture_release_checklist.py",
+        "nn_ids_posture_release_receipt.py",
+        "nn_ids_model_card.py"
+      ],
+      "generated_artifacts": [
+        "/var/log/nn_ids_health_evidence.json",
+        "/var/log/nn_ids_posture_bundle_manifest.json",
+        "/var/log/nn_ids_model_card.md"
+      ],
+      "validation_focus": [
+        "data provenance",
+        "feature-schema coverage",
+        "training metric thresholds",
+        "drift evidence",
+        "model-card freshness",
+        "privacy-safe operator handoff"
+      ],
+      "rollback_procedure": "Keep prior models and snapshots intact, remove only the newly added passive evidence helper or gate wiring, and require manual review before any restore or retraining action."
+    },
+    {
+      "id": "recovery_restore_and_release_gates",
+      "owner_role": "recovery and release readiness maintainer",
+      "primary_files": [
+        "nn_ids_snapshot.py",
+        "nn_ids_restore.py",
+        "firstboot_release_gate.py",
+        "firstboot_release_gate_status.py",
+        "firstboot_release_gate_bundle_manifest.py",
+        "firstboot_release_gate_operator_digest.py"
+      ],
+      "generated_artifacts": [
+        "/var/log/firstboot_release_gate.status.json",
+        "/var/log/firstboot_release_gate.bundle_manifest.json",
+        "/var/log/firstboot_release_gate.bundle_manifest.md"
+      ],
+      "validation_focus": [
+        "fail-closed missing evidence",
+        "freshness thresholds",
+        "operator-readable Markdown",
+        "machine-readable JSON",
+        "no automatic restore approval"
+      ],
+      "rollback_procedure": "Disable only the new release-gate or receipt helper; keep snapshots and restore scripts available but require explicit operator review before use."
+    },
+    {
+      "id": "operator_docs_and_ci_static_coverage",
+      "owner_role": "documentation and validation maintainer",
+      "primary_files": [
+        "README.md",
+        "CHANGELOG.md",
+        "docs/",
+        "tests/",
+        ".github/workflows/"
+      ],
+      "generated_artifacts": [
+        "docs/changelog_*.md",
+        "workflow logs",
+        "static security check evidence"
+      ],
+      "validation_focus": [
+        "documentation freshness",
+        "rollback guidance",
+        "safe-default wording",
+        "static shell and Python syntax checks",
+        "CI and release-gate workflow health"
+      ],
+      "rollback_procedure": "Revert only the documentation or test increment; no deployed host, VM, firewall, IDS, service, model, dataset, credential, or account state is changed by this roadmap."
+    }
+  ],
+  "next_increment_candidates": [
+    {
+      "priority": "near-term",
+      "title": "README duplicate-module drift static check",
+      "rationale": "README currently contains repeated feature and project-structure entries; a passive drift check can prevent future documentation confusion without deleting current content."
+    },
+    {
+      "priority": "medium-term",
+      "title": "Host/VM policy configuration schema",
+      "rationale": "A schema can validate thresholds, artifact paths, and enablement choices before firstboot or ISO promotion."
+    },
+    {
+      "priority": "long-term",
+      "title": "Unified aggregate posture gate",
+      "rationale": "A single privacy-safe gate can compose Kali guest readiness, host/VM isolation, NN IDS health, drift, model-card, release receipts, and rollback readiness."
+    }
+  ],
+  "rollback": "Delete docs/repository_module_roadmap.json, docs/repository_module_roadmap.md, docs/changelog_repository_module_roadmap.md, and tests/test_repository_module_roadmap_static.sh. No live firewall, service, host, VM, IDS, approval, restore, model, dataset, account, credential, or network state requires rollback."
+}
