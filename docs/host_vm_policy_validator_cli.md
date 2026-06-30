@@ -11,9 +11,10 @@ The CLI:
 - reads one JSON profile supplied by the operator,
 - checks defensive-use acknowledgement, aggregate-only privacy boundaries, bounded freshness values, aggregate artifact paths, and file-only rollback notes,
 - emits JSON or Markdown evidence,
+- can optionally emit a compact JSON manifest that records validator version, profile SHA-256, evidence path, and handoff notes,
 - returns `0` for valid profiles and `2` for invalid profiles,
 - does not mutate host or VM state,
-- does not read raw logs, packets, captures, datasets, secrets, hostnames, usernames, credentials, private keys, tokens, model binaries, firewall rules, network interfaces, service state, approval state, or restore state.
+- does not read sensitive raw telemetry, secret-bearing values, firewall rules, network interfaces, service state, approval state, or restore state.
 
 ## Checked-in example profiles
 
@@ -36,6 +37,7 @@ Expected successful output includes:
 ```json
 {
   "valid": true,
+  "profile_sha256": "...",
   "safety": {
     "passive_only": true,
     "mutates_host_or_vm_state": false,
@@ -45,13 +47,35 @@ Expected successful output includes:
 }
 ```
 
+## Manifest evidence
+
+Use `--manifest-output` when a later firstboot, release-gate, or handoff step needs to prove which profile and validator version produced the evidence:
+
+```bash
+python3 host_vm_policy_validator.py examples/host_vm_policy_default_review.json \
+  --output /tmp/host_vm_policy_validation.json \
+  --manifest-output /tmp/host_vm_policy_validation_manifest.json
+```
+
+The manifest records:
+
+- `manifest_schema_version`,
+- `validator` and `validator_version`,
+- `profile_path` and `profile_sha256`,
+- evidence format and path,
+- passive safety flags,
+- required aggregate artifacts,
+- a handoff owner and rollback scope.
+
+The manifest is aggregate-only metadata. It does not contain raw telemetry or live host/VM mutations.
+
 ## Markdown evidence
 
 ```bash
 python3 host_vm_policy_validator.py examples/host_vm_policy_default_review.json --format markdown --output /tmp/host_vm_policy_validation.md
 ```
 
-Markdown output is intended for operator handoff notes or pull-request evidence. It summarizes pass/fail status, policy identity, mode, passive-only status, aggregate-only status, validation errors, and required aggregate artifacts.
+Markdown output is intended for operator handoff notes or pull-request evidence. It summarizes pass/fail status, profile hash, policy identity, mode, passive-only status, aggregate-only status, validation errors, and required aggregate artifacts.
 
 ## Validation coverage
 
@@ -66,6 +90,7 @@ The tests cover:
 - a valid in-test policy profile,
 - unsafe remote host mutation and privacy-boundary failures,
 - Markdown output and file writing,
+- optional manifest generation with profile hashing and evidence path traceability,
 - every checked-in example profile,
 - default, strict, and recovery-handoff example intent,
 - documentation and changelog traceability.
@@ -73,6 +98,8 @@ The tests cover:
 ## Compatibility
 
 The CLI uses only Python's standard library and does not require `jsonschema` or network access. It can coexist with future JSON Schema validators because it enforces the same repository-level policy expectations rather than replacing the schema.
+
+`--manifest-output` is optional. Existing invocations that only consume stdout, `--format`, or `--output` keep their behavior.
 
 ## Rollback
 
@@ -87,11 +114,11 @@ Delete these files:
 - `examples/host_vm_policy_recovery_handoff.json`
 - `docs/changelog_host_vm_policy_example_profiles.md`
 - `tests/test_host_vm_policy_example_profiles.py`
+- `docs/changelog_host_vm_policy_manifest_evidence.md`
 
 No service, timer, firstboot hook, firewall rule, network interface, package, approval state, restore state, IDS model, dataset, credential, account, host state, or VM state requires rollback.
 
 ## Follow-up work
 
 - Add an optional firstboot dry-run wrapper that writes validator output under `/var/log` only after static and CI coverage exists.
-- Add release-gate aggregation that consumes validator JSON while preserving aggregate-only privacy boundaries.
-- Add a manifest that records validator version, profile hash, evidence path, and follow-up owner for handoff evidence.
+- Add release-gate aggregation that consumes validator JSON and manifest JSON while preserving aggregate-only privacy boundaries.
