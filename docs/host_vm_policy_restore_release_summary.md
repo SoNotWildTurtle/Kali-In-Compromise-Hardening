@@ -68,6 +68,8 @@ The machine-readable artifact contract is documented in `docs/schemas/host_vm_po
 
 It also links decision semantics to readiness state: `restore_summary_ready` requires `summary_ready=true` and zero blocking issues, while `restore_summary_blocked` requires `summary_ready=false` and at least one blocker. The schema is intentionally strict with `additionalProperties=false` so downstream gates can detect accidental contract drift before reviewers promote evidence.
 
+`tests/test_host_vm_policy_restore_summary_schema_examples_static.sh` now builds ready and blocked synthetic examples through the summary CLI, compares emitted field sets against the schema required list, verifies all passive const safety fields, and checks ready/blocked conditional semantics without introducing a runtime JSON Schema validator dependency. This keeps hosted validation dependency-free while still proving the published contract matches current output examples.
+
 ## Hosted release-gate evidence
 
 The `Restore Executor Release Gate` workflow now builds synthetic, non-mutating restore evidence during pull-request validation. It runs:
@@ -97,6 +99,7 @@ Before promoting restore executor evidence, confirm:
 5. Blocking issue count is zero.
 6. Hosted `restore-executor-release-evidence` includes the release summary JSON and compact report.
 7. The JSON Schema still matches the published summary fields before downstream release gates consume the artifact.
+8. Static schema example coverage passes for both ready and blocked summaries.
 
 ## Validation
 
@@ -104,6 +107,7 @@ Focused validation:
 
 ```bash
 bash tests/test_host_vm_policy_restore_release_summary_static.sh
+bash tests/test_host_vm_policy_restore_summary_schema_examples_static.sh
 bash tests/run_static_security_checks.sh
 ```
 
@@ -116,7 +120,7 @@ Static Security Checks
 
 ## Rollback
 
-Revert `host_vm_policy_restore_release_summary.py`, `tests/test_host_vm_policy_restore_release_summary_static.sh`, this document, the changelog entry, the schema file, and the restore release workflow wiring. No host, VM, package, firewall, service, IDS, dataset, or hypervisor state needs rollback.
+Revert `host_vm_policy_restore_release_summary.py`, `tests/test_host_vm_policy_restore_release_summary_static.sh`, `tests/test_host_vm_policy_restore_summary_schema_examples_static.sh`, this document, the changelog entry, the schema file, and the restore release workflow wiring. No host, VM, package, firewall, service, IDS, dataset, or hypervisor state needs rollback.
 
 ## Follow-up work
 
