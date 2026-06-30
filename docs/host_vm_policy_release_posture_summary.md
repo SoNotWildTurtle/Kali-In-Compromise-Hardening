@@ -1,0 +1,82 @@
+# Host/VM Policy Aggregate Release Posture Summary
+
+`host_vm_policy_release_posture_summary.py` creates a passive release posture artifact from already-summarized firstboot and restore evidence.
+
+The CLI is intended for reviewer handoff and release-gate composition. It does not execute firstboot, execute restore actions, inspect live host or VM state, read raw telemetry, load IDS datasets or models, install packages, change firewall rules, reload services, contact external systems, or add persistence.
+
+## Inputs
+
+The summary expects two aggregate JSON artifacts:
+
+- `--firstboot-summary`: output from `host_vm_policy_firstboot_release_summary.py` with `decision=summary_ready` and `summary_ready=true`.
+- `--restore-summary`: output from `host_vm_policy_restore_release_summary.py` with `decision=restore_summary_ready` and `summary_ready=true`.
+
+Both inputs must declare:
+
+- `changes_live_state=false`
+- `reads_raw_telemetry=false`
+- `aggregate_evidence_only=true`
+- `blocking_issues` as a JSON list
+
+Restore evidence must also declare `requires_manual_invocation=true` so the manual restore boundary remains explicit.
+
+## Usage
+
+```bash
+python3 host_vm_policy_release_posture_summary.py \
+  --firstboot-summary firstboot-release-summary.json \
+  --restore-summary restore-release-summary.json \
+  --output release-posture-summary.json \
+  --report release-posture-summary.report \
+  --strict
+```
+
+`--strict` exits non-zero unless the combined posture is ready. This lets hosted release gates fail closed without re-running live firstboot or restore operations.
+
+## Output decisions
+
+- `release_posture_ready`: firstboot and restore summaries are both ready, aggregate-only, non-mutating, and free of blocking issues.
+- `release_posture_blocked`: at least one required summary is missing, malformed, unsafe, blocked, or not ready.
+
+The JSON output contains component decisions, blocking issue counts, passive safety fields, reviewer handoff details, rollback notes, and follow-up work. The compact report mirrors the same posture decision in key/value form for shell-based gates.
+
+## Threat-model rationale
+
+This layer reduces reviewer error by producing one machine-readable posture decision from two independent release summaries. It intentionally consumes only aggregate summaries rather than raw firstboot logs, restore executor output, telemetry, IDS data, or system state. That keeps the posture gate auditable, reproducible, and safe to publish as release evidence.
+
+The posture summary does not replace module-specific validation. It composes existing firstboot and restore release evidence so later workflows can promote a coherent product state only after both subsystems are ready.
+
+## Compatibility
+
+This is additive and backwards compatible. Existing firstboot, restore, packaging, services, systemd units, smoke checks, IDS behavior, and user workflows are unchanged.
+
+## Validation
+
+Focused validation:
+
+```bash
+bash tests/test_host_vm_policy_release_posture_summary_static.sh
+bash tests/run_static_security_checks.sh
+```
+
+Hosted validation required before merge:
+
+```text
+Static Security Checks
+```
+
+## Rollback
+
+Revert `host_vm_policy_release_posture_summary.py`, `tests/test_host_vm_policy_release_posture_summary_static.sh`, this document, and the changelog entry. No host, VM, package, service, firewall, hypervisor, IDS, dataset, model, or telemetry state requires rollback.
+
+## Known limitations
+
+- This does not yet consume IDS aggregate evidence because IDS readiness artifacts do not use the same ready/blocked release-summary semantics.
+- This is not yet wired into a hosted aggregate release gate; it is a local/reviewer CLI plus static coverage.
+- A JSON Schema contract for the posture artifact should be added after the field set stabilizes.
+
+## Follow-up work
+
+- Add an IDS aggregate release summary with matching passive ready/blocked semantics.
+- Add a JSON Schema contract and dependency-free example validation for posture artifacts.
+- Wire firstboot, restore, and IDS aggregate evidence into one hosted release posture workflow.
