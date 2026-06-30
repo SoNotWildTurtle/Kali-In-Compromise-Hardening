@@ -54,6 +54,15 @@ blocking_issue_count=0
 
 A blocked summary reports `decision=summary_blocked` and records each blocking issue in JSON and compact report form.
 
+## Hosted workflow artifacts
+
+The `Firstboot Handoff Release Gate` workflow now builds the release summary after both the ready receipt and expected-blocked receipt fixture are generated. The hosted evidence bundle includes:
+
+- `/tmp/firstboot-handoff-gate/firstboot_release_summary.json`
+- `/tmp/firstboot-handoff-gate/firstboot_release_summary.report`
+
+Those artifacts are uploaded with `firstboot-handoff-gate-evidence` so reviewers can verify the ready path, the expected-negative fixture decision, and zero summary blocking issues from a single machine-readable handoff.
+
 ## Reviewer handoff checklist
 
 Before using the summary as release evidence, reviewers should confirm:
@@ -62,7 +71,7 @@ Before using the summary as release evidence, reviewers should confirm:
 2. If the expected-blocked fixture is present, its decision is `release_receipt_blocked`.
 3. The summary declares no live-state changes and no raw telemetry reads.
 4. Blocking issue count is zero for the ready summary.
-5. Hosted workflow artifacts include both ready evidence and expected-negative evidence once workflow wiring is promoted in a follow-up increment.
+5. Hosted workflow artifacts include both ready evidence and expected-negative evidence.
 
 ## Validation
 
@@ -70,16 +79,16 @@ Focused validation:
 
 ```bash
 bash tests/test_host_vm_policy_firstboot_release_summary_static.sh
+bash tests/test_firstboot_handoff_release_gate_workflow_static.sh
 bash tests/run_static_security_checks.sh
 ```
 
 ## Rollback
 
-Revert `host_vm_policy_firstboot_release_summary.py`, `tests/test_host_vm_policy_firstboot_release_summary_static.sh`, this document, and the changelog entry. No host, VM, package, firewall, service, IDS, dataset, or hypervisor state needs rollback.
+Revert `host_vm_policy_firstboot_release_summary.py`, `tests/test_host_vm_policy_firstboot_release_summary_static.sh`, this document, the changelog entry, and the summary-specific workflow wiring. No host, VM, package, firewall, service, IDS, dataset, or hypervisor state needs rollback.
 
 ## Follow-up work
 
-- Wire the summary into the hosted firstboot handoff release gate after this standalone CLI and static coverage are green.
 - Feed restore executor and IDS aggregate release evidence into the same summary once those receipts expose compatible ready and expected-blocked semantics.
 - Add reviewer-facing release notes whenever expected-blocked summary semantics change.
 - Keep live firstboot packaging gated behind repeated green hosted summaries and explicit human review.
