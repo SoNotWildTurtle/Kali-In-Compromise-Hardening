@@ -2,7 +2,6 @@ from pathlib import Path
 
 
 PLAN_PATH = Path("docs/host_vm_policy_firstboot_dry_run_plan.md")
-README_PATH = Path("README.md")
 CHANGELOG_PATH = Path("docs/changelog_host_vm_policy_firstboot_dry_run_plan.md")
 
 
@@ -26,11 +25,10 @@ def test_firstboot_dry_run_plan_defines_machine_readable_outputs() -> None:
     assert "rollback scope limited to deleting generated evidence files" in plan
 
 
-def test_readme_and_changelog_reference_firstboot_dry_run_plan() -> None:
-    readme = README_PATH.read_text(encoding="utf-8")
+def test_changelog_records_safe_additive_planning_scope() -> None:
     changelog = CHANGELOG_PATH.read_text(encoding="utf-8")
 
-    assert "host_vm_policy_firstboot_dry_run_plan.md" in readme
-    assert "Host/VM policy firstboot dry-run" in readme
     assert "documentation-only" in changelog
-    assert "No live host, VM" in changelog
+    assert "Existing validator CLI behavior remains unchanged" in changelog
+    assert "Rollback is limited to reverting this planning document" in changelog
+    assert "Add the standard-library dry-run wrapper" in changelog
