@@ -42,6 +42,12 @@ Review invalid-profile evidence without treating `validation.valid=false` as the
 python3 host_vm_policy_firstboot_handoff_gate.py invalid_handoff.json --allow-invalid-profile
 ```
 
+## Hosted workflow
+
+`.github/workflows/firstboot-handoff-release-gate.yml` runs the module static test, builds synthetic aggregate handoff evidence on the hosted runner, evaluates it with `--strict`, verifies the `release_ready` JSON/report decisions, and uploads only aggregate handoff gate evidence.
+
+The workflow is intentionally passive. It does not install packages, start services, change firewall rules, touch host or VM state, collect credentials, read raw telemetry, or fetch external data.
+
 ## Exit behavior
 
 - Without `--strict`, the command exits `0` after writing a decision record.
@@ -57,10 +63,10 @@ This is additive. It does not alter existing validator commands, dry-run wrapper
 
 ## Rollback
 
-Revert `host_vm_policy_firstboot_handoff_gate.py`, `tests/test_host_vm_policy_firstboot_handoff_gate_static.sh`, this document, and the changelog entry. No live system state requires rollback.
+Revert `host_vm_policy_firstboot_handoff_gate.py`, `tests/test_host_vm_policy_firstboot_handoff_gate_static.sh`, this document, the workflow, workflow static test, and the changelog entries. No live system state requires rollback.
 
 ## Follow-up work
 
-- Add a dedicated hosted workflow that runs the handoff gate against a generated test bundle.
-- Add packaging/firstboot wiring only after workflow coverage is green and the default bundle path is stable.
-- Feed the gate decision into a broader aggregate release-readiness receipt alongside restore executor, IDS audit, and policy attestation evidence.
+- Feed the hosted gate decision into a broader aggregate release-readiness receipt alongside restore executor, IDS audit, and policy attestation evidence.
+- Add packaging/firstboot wiring only after repeated workflow coverage is green and the default bundle path is stable.
+- Add expected-failure artifacts for intentionally blocked handoffs once the release receipt can distinguish blocked evidence from workflow failure.
