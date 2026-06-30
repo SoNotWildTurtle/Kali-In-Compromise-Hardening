@@ -62,6 +62,8 @@ See `docs/firstboot_release_receipt_blocked_examples.md` for expected blocked re
 
 `.github/workflows/firstboot-handoff-release-gate.yml` runs the module static tests, builds synthetic aggregate handoff evidence on the hosted runner, evaluates it with `--strict`, creates the release receipt, verifies the `release_ready` and `release_receipt_ready` JSON/report decisions, and uploads only aggregate handoff gate and receipt evidence.
 
+The workflow also builds an expected-blocked synthetic fixture with `validation.valid=false`, evaluates it without `--strict`, verifies the blocked gate and receipt decisions, and uploads those expected-negative aggregate artifacts under `firstboot-handoff-gate-blocked-fixture`. This lets reviewers compare ready evidence with intentionally blocked evidence without weakening the primary release gate or making expected-negative fixtures fail CI.
+
 The workflow is intentionally passive. It does not install packages, start services, change firewall rules, touch host or VM state, collect credentials, read raw telemetry, or fetch external data.
 
 ## Exit behavior
@@ -86,4 +88,4 @@ Revert `host_vm_policy_firstboot_handoff_gate.py`, `host_vm_policy_firstboot_rel
 
 - Feed the firstboot release receipt into a broader aggregate release-readiness receipt alongside restore executor, IDS audit, and policy attestation evidence.
 - Add packaging/firstboot wiring only after repeated workflow coverage is green and the default bundle path is stable.
-- Add expected-failure artifacts for intentionally blocked handoffs once the aggregate release receipt can distinguish blocked evidence from workflow failure.
+- Promote the blocked-fixture artifact into a broader release-readiness summary once restore executor and IDS aggregate evidence use the same expected-negative pattern.
