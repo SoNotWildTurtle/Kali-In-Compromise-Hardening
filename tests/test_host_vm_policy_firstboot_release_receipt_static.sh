@@ -10,6 +10,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 MODULE="host_vm_policy_firstboot_release_receipt.py"
 PASS_GATE="$TMP_DIR/firstboot_handoff_gate.pass.json"
 BLOCK_GATE="$TMP_DIR/firstboot_handoff_gate.block.json"
+MALFORMED_GATE="$TMP_DIR/firstboot_handoff_gate.malformed.json"
 RECEIPT_JSON="$TMP_DIR/firstboot_release_receipt.json"
 RECEIPT_REPORT="$TMP_DIR/firstboot_release_receipt.report"
 
@@ -75,5 +76,27 @@ fi
 grep -q '"decision": "release_receipt_blocked"' "$RECEIPT_JSON"
 grep -q 'gate decision must be release_ready' "$RECEIPT_JSON"
 grep -q 'gate check not passing: validation_valid' "$RECEIPT_REPORT"
+
+cat > "$MALFORMED_GATE" <<'JSON'
+{
+  "schema_version": 1,
+  "gate": "unexpected_gate.py",
+  "decision": "release_ready",
+  "changes_live_state": true,
+  "reads_raw_telemetry": true,
+  "checks_passed": 0,
+  "checks_failed": 0,
+  "checks": "not-a-list"
+}
+JSON
+
+python3 "$MODULE" "$MALFORMED_GATE" --output "$RECEIPT_JSON" --report "$RECEIPT_REPORT"
+grep -q '"decision": "release_receipt_blocked"' "$RECEIPT_JSON"
+grep -q 'gate evidence missing required field: created_utc' "$RECEIPT_JSON"
+grep -q 'gate must be host_vm_policy_firstboot_handoff_gate.py' "$RECEIPT_JSON"
+grep -q 'gate evidence must declare changes_live_state=false' "$RECEIPT_JSON"
+grep -q 'gate evidence must declare reads_raw_telemetry=false' "$RECEIPT_JSON"
+grep -q 'gate check not passing: checks_not_list' "$RECEIPT_REPORT"
+grep -q '^decision=release_receipt_blocked$' "$RECEIPT_REPORT"
 
 echo "firstboot release receipt static checks passed"
