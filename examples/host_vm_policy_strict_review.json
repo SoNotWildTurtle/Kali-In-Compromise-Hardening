@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "policy_id": "strict_review",
+  "mode": "firstboot_release_gate",
+  "authorization": {
+    "authorized_defensive_use_only": true,
+    "operator_acknowledgement_required": true,
+    "remote_host_mutation_allowed": false
+  },
+  "freshness": {
+    "enabled": true,
+    "max_artifact_age_minutes": 60,
+    "future_clock_skew_tolerance_seconds": 120
+  },
+  "artifacts": [
+    {
+      "name": "firstboot_handoff_index_json",
+      "path": "/var/log/host_vm_policy_firstboot_handoff.json",
+      "required": true,
+      "producer": "host_vm_policy_firstboot_handoff.py"
+    },
+    {
+      "name": "policy_validator_evidence_json",
+      "path": "/var/log/host_vm_policy_validator_evidence.json",
+      "required": true,
+      "producer": "host_vm_policy_validator.py"
+    }
+  ],
+  "privacy_boundaries": {
+    "aggregate_only": true,
+    "forbidden_fields": [
+      "raw_logs",
+      "packets",
+      "captures",
+      "credentials",
+      "hostnames",
+      "usernames",
+      "secrets",
+      "model_binaries",
+      "datasets",
+      "private_keys",
+      "tokens"
+    ]
+  },
+  "rollback": {
+    "revert_files_only": true,
+    "live_state_rollback_required": false,
+    "notes": "Revert only this strict review profile and related documentation references; no deployed host, VM, firewall, service, network, IDS, credential, account, package, approval, or recovery state is changed."
+  }
+}
