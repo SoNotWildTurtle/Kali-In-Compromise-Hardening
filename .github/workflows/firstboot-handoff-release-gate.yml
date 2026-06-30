@@ -110,6 +110,68 @@ jobs:
           grep -q '"decision": "release_receipt_ready"' /tmp/firstboot-handoff-gate/firstboot_release_receipt.json
           grep -q '^decision=release_receipt_ready$' /tmp/firstboot-handoff-gate/firstboot_release_receipt.report
 
+      - name: Build expected blocked receipt fixture
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/firstboot-handoff-gate-blocked
+          printf '{"valid": false, "policy_id": "hosted_firstboot_handoff_gate_blocked", "errors": ["synthetic invalid profile fixture"]}\n' > /tmp/firstboot-handoff-gate-blocked/host_vm_policy_validator_evidence.json
+          printf '{"firstboot_dry_run": {"passive_only": true, "workflow": "Firstboot Handoff Release Gate", "fixture": "expected_blocked"}}\n' > /tmp/firstboot-handoff-gate-blocked/host_vm_policy_firstboot_manifest.json
+          cat > /tmp/firstboot-handoff-gate-blocked/host_vm_policy_firstboot_handoff.blocked.json <<'JSON'
+          {
+            "handoff_schema_version": 1,
+            "wrapper": "host_vm_policy_firstboot_dry_run.py",
+            "wrapper_version": "1.0.0",
+            "validation": {
+              "valid": false,
+              "error_count": 1,
+              "errors": ["synthetic invalid profile fixture"]
+            },
+            "generated_artifacts": {
+              "validator_evidence_json": "/tmp/firstboot-handoff-gate-blocked/host_vm_policy_validator_evidence.json",
+              "firstboot_manifest_json": "/tmp/firstboot-handoff-gate-blocked/host_vm_policy_firstboot_manifest.json"
+            },
+            "safety": {
+              "passive_only": true,
+              "mutates_host_or_vm_state": false,
+              "collects_credentials_or_secrets": false,
+              "enables_persistence_or_remote_access": false
+            },
+            "privacy_boundaries": {
+              "contains_raw_telemetry": false,
+              "contains_secret_material": false,
+              "forbidden_handoff_keys": [
+                "captures",
+                "credentials",
+                "datasets",
+                "hostnames",
+                "model_binaries",
+                "packets",
+                "private_keys",
+                "raw_logs",
+                "secrets",
+                "tokens",
+                "usernames"
+              ]
+            },
+            "rollback": {
+              "live_state_rollback_required": false
+            }
+          }
+          JSON
+          python3 host_vm_policy_firstboot_handoff_gate.py \
+            /tmp/firstboot-handoff-gate-blocked/host_vm_policy_firstboot_handoff.blocked.json \
+            --output /tmp/firstboot-handoff-gate-blocked/firstboot_handoff_gate.blocked.json \
+            --report /tmp/firstboot-handoff-gate-blocked/firstboot_handoff_gate.blocked.report
+          python3 host_vm_policy_firstboot_release_receipt.py \
+            /tmp/firstboot-handoff-gate-blocked/firstboot_handoff_gate.blocked.json \
+            --output /tmp/firstboot-handoff-gate-blocked/firstboot_release_receipt.blocked.json \
+            --report /tmp/firstboot-handoff-gate-blocked/firstboot_release_receipt.blocked.report
+          grep -q '"decision": "release_blocked"' /tmp/firstboot-handoff-gate-blocked/firstboot_handoff_gate.blocked.json
+          grep -q '^decision=release_blocked$' /tmp/firstboot-handoff-gate-blocked/firstboot_handoff_gate.blocked.report
+          grep -q '"decision": "release_receipt_blocked"' /tmp/firstboot-handoff-gate-blocked/firstboot_release_receipt.blocked.json
+          grep -q '^decision=release_receipt_blocked$' /tmp/firstboot-handoff-gate-blocked/firstboot_release_receipt.blocked.report
+          grep -q 'gate check not passing: validation_valid' /tmp/firstboot-handoff-gate-blocked/firstboot_release_receipt.blocked.report
+
       - name: Upload handoff gate evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -121,4 +183,17 @@ jobs:
             /tmp/firstboot-handoff-gate/firstboot_handoff_gate.report
             /tmp/firstboot-handoff-gate/firstboot_release_receipt.json
             /tmp/firstboot-handoff-gate/firstboot_release_receipt.report
+          if-no-files-found: error
+
+      - name: Upload expected blocked receipt fixture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firstboot-handoff-gate-blocked-fixture
+          path: |
+            /tmp/firstboot-handoff-gate-blocked/host_vm_policy_firstboot_handoff.blocked.json
+            /tmp/firstboot-handoff-gate-blocked/firstboot_handoff_gate.blocked.json
+            /tmp/firstboot-handoff-gate-blocked/firstboot_handoff_gate.blocked.report
+            /tmp/firstboot-handoff-gate-blocked/firstboot_release_receipt.blocked.json
+            /tmp/firstboot-handoff-gate-blocked/firstboot_release_receipt.blocked.report
           if-no-files-found: error
