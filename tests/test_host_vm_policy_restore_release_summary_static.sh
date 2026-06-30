@@ -7,10 +7,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT="$ROOT_DIR/host_vm_policy_restore_release_summary.py"
 WORKFLOW="$ROOT_DIR/.github/workflows/restore-executor-release-gate.yml"
+SCHEMA="$ROOT_DIR/docs/schemas/host_vm_policy_restore_release_summary.schema.json"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 python3 -m py_compile "$SCRIPT"
+python3 -m json.tool "$SCHEMA" >/dev/null
 
 # The hosted release gate must publish the passive summary artifacts alongside executor evidence.
 grep -q "host_vm_policy_restore_release_summary.py" "$WORKFLOW"
@@ -26,6 +28,21 @@ grep -q "restore_ready_dry_run" "$SCRIPT"
 grep -q "restore_blocked" "$SCRIPT"
 grep -q "aggregate_evidence_only.*True" "$SCRIPT"
 grep -q "passive summary only" "$SCRIPT"
+
+# The published JSON Schema must pin the same passive release evidence contract.
+grep -q '"additionalProperties": false' "$SCHEMA"
+grep -q '"restore_summary_ready"' "$SCHEMA"
+grep -q '"restore_summary_blocked"' "$SCHEMA"
+grep -q '"restore_ready_dry_run"' "$SCHEMA"
+grep -q '"restore_blocked"' "$SCHEMA"
+grep -q '"changes_live_state"' "$SCHEMA"
+grep -q '"const": false' "$SCHEMA"
+grep -q '"reads_raw_telemetry"' "$SCHEMA"
+grep -q '"aggregate_evidence_only"' "$SCHEMA"
+grep -q '"requires_manual_invocation"' "$SCHEMA"
+grep -q '"blocking_issues"' "$SCHEMA"
+grep -q '"maxItems": 0' "$SCHEMA"
+grep -q '"minItems": 1' "$SCHEMA"
 
 NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 python3 - "$TMPDIR/ready.json" "$NOW" <<'PY'
