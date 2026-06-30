@@ -48,6 +48,6 @@ Before using this roadmap to drive code changes, confirm the selected increment:
 
 ## Rollback
 
-Delete `docs/repository_module_roadmap.json`, `docs/repository_module_roadmap.md`, `docs/changelog_repository_module_roadmap.md`, and `tests/test_repository_module_roadmap_static.sh`.
+Delete `docs/repository_module_roadmap.json`, `docs/repository_module_roadmap.md`, `docs/changelog_repository_module_roadmap.md`, and `tests/test_repository_module_roadmap.py`.
 
 No live firewall, service, host, VM, IDS, approval, restore, model, dataset, account, credential, or network state requires rollback.
