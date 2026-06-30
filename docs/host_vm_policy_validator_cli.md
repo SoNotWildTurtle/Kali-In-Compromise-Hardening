@@ -15,9 +15,15 @@ The CLI:
 - does not mutate host or VM state,
 - does not read raw logs, packets, captures, datasets, secrets, hostnames, usernames, credentials, private keys, tokens, model binaries, firewall rules, network interfaces, service state, approval state, or restore state.
 
-## Example profile
+## Checked-in example profiles
 
-Create `examples/host_vm_policy_default_review.json` or another local profile using the schema documented in `docs/host_vm_policy_configuration_schema.md`.
+Use one of the checked-in examples as a starting point before creating a local profile:
+
+- `examples/host_vm_policy_default_review.json` keeps a one-day freshness window for baseline firstboot handoff review.
+- `examples/host_vm_policy_strict_review.json` keeps a one-hour freshness window for tighter release review.
+- `examples/host_vm_policy_recovery_handoff.json` keeps a one-week freshness window for operator recovery handoff notes.
+
+All examples are passive JSON files. They keep `remote_host_mutation_allowed: false`, require aggregate-only evidence, exclude raw telemetry and secret-bearing fields, and document file-only rollback.
 
 ## JSON evidence
 
@@ -49,17 +55,19 @@ Markdown output is intended for operator handoff notes or pull-request evidence.
 
 ## Validation coverage
 
-Run the focused regression suite with:
+Run the focused regression suites with:
 
 ```bash
-python3 -m pytest tests/test_host_vm_policy_validator_cli.py
+python3 -m pytest tests/test_host_vm_policy_validator_cli.py tests/test_host_vm_policy_example_profiles.py
 ```
 
 The tests cover:
 
-- a valid policy profile,
+- a valid in-test policy profile,
 - unsafe remote host mutation and privacy-boundary failures,
 - Markdown output and file writing,
+- every checked-in example profile,
+- default, strict, and recovery-handoff example intent,
 - documentation and changelog traceability.
 
 ## Compatibility
@@ -74,11 +82,16 @@ Delete these files:
 - `docs/host_vm_policy_validator_cli.md`
 - `docs/changelog_host_vm_policy_validator_cli.md`
 - `tests/test_host_vm_policy_validator_cli.py`
+- `examples/host_vm_policy_default_review.json`
+- `examples/host_vm_policy_strict_review.json`
+- `examples/host_vm_policy_recovery_handoff.json`
+- `docs/changelog_host_vm_policy_example_profiles.md`
+- `tests/test_host_vm_policy_example_profiles.py`
 
 No service, timer, firstboot hook, firewall rule, network interface, package, approval state, restore state, IDS model, dataset, credential, account, host state, or VM state requires rollback.
 
 ## Follow-up work
 
-- Add example profiles for default review, strict release promotion, and recovery handoff.
 - Add an optional firstboot dry-run wrapper that writes validator output under `/var/log` only after static and CI coverage exists.
 - Add release-gate aggregation that consumes validator JSON while preserving aggregate-only privacy boundaries.
+- Add a manifest that records validator version, profile hash, evidence path, and follow-up owner for handoff evidence.
