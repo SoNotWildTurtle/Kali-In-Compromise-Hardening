@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SoNotWildTurtle/Kali-In-Compromise-Hardening/docs/schemas/host_vm_policy_restore_release_summary.schema.json",
+  "title": "Host/VM Restore Release Summary",
+  "description": "Passive aggregate-only release readiness evidence for manual host/VM policy restore reviews. The artifact must not represent live restore execution, raw telemetry access, or automatic rollback activity.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "created_utc",
+    "decision",
+    "summary_ready",
+    "ready_restore_decision",
+    "expected_blocked_decision",
+    "blocking_issues",
+    "changes_live_state",
+    "reads_raw_telemetry",
+    "aggregate_evidence_only",
+    "requires_manual_invocation",
+    "safe_default",
+    "reviewer_handoff"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version for this passive restore release summary contract."
+    },
+    "created_utc": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "UTC creation time in compact RFC 3339 form."
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["restore_summary_ready", "restore_summary_blocked"],
+      "description": "Aggregate release-readiness decision."
+    },
+    "summary_ready": {
+      "type": "boolean",
+      "description": "True only when the aggregate summary is ready and has no blocking issues."
+    },
+    "ready_restore_decision": {
+      "type": "string",
+      "const": "restore_ready_dry_run",
+      "description": "Decision copied from the non-mutating restore executor dry-run evidence."
+    },
+    "expected_blocked_decision": {
+      "type": ["string", "null"],
+      "enum": ["restore_blocked", null],
+      "description": "Decision copied from the expected-blocked restore executor fixture when supplied."
+    },
+    "blocking_issues": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Human-readable blockers that prevent release readiness."
+    },
+    "changes_live_state": {
+      "type": "boolean",
+      "const": false,
+      "description": "Must remain false; summary artifacts are passive review evidence only."
+    },
+    "reads_raw_telemetry": {
+      "type": "boolean",
+      "const": false,
+      "description": "Must remain false; raw telemetry, logs, credentials, datasets, and model binaries are out of scope."
+    },
+    "aggregate_evidence_only": {
+      "type": "boolean",
+      "const": true,
+      "description": "Must remain true because the summary only aggregates existing JSON evidence."
+    },
+    "requires_manual_invocation": {
+      "type": "boolean",
+      "const": true,
+      "description": "Must remain true to preserve the manual restore boundary."
+    },
+    "safe_default": {
+      "type": "string",
+      "const": "passive summary only; restore execution remains manual and dry-run by default",
+      "description": "Operator-facing safe default statement."
+    },
+    "reviewer_handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "confirm_ready_decision",
+        "confirm_expected_blocked_decision",
+        "confirm_no_live_state_change",
+        "confirm_manual_restore_only"
+      ],
+      "properties": {
+        "confirm_ready_decision": {
+          "type": "string",
+          "const": "restore_ready_dry_run"
+        },
+        "confirm_expected_blocked_decision": {
+          "type": ["string", "null"],
+          "enum": ["restore_blocked", null]
+        },
+        "confirm_no_live_state_change": {
+          "type": "boolean",
+          "const": true
+        },
+        "confirm_manual_restore_only": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": {"const": "restore_summary_ready"}
+        },
+        "required": ["decision"]
+      },
+      "then": {
+        "properties": {
+          "summary_ready": {"const": true},
+          "blocking_issues": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {"const": "restore_summary_blocked"}
+        },
+        "required": ["decision"]
+      },
+      "then": {
+        "properties": {
+          "summary_ready": {"const": false},
+          "blocking_issues": {"minItems": 1}
+        }
+      }
+    }
+  ]
+}

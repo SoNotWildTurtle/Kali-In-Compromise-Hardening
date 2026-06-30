@@ -56,6 +56,18 @@ blocking_issue_count=0
 
 A blocked summary reports `decision=restore_summary_blocked` and records every blocking issue in both JSON and compact report form.
 
+## JSON Schema contract
+
+The machine-readable artifact contract is documented in `docs/schemas/host_vm_policy_restore_release_summary.schema.json`. The schema pins the passive safety fields expected by release gates:
+
+- `changes_live_state=false`
+- `reads_raw_telemetry=false`
+- `aggregate_evidence_only=true`
+- `requires_manual_invocation=true`
+- `safe_default="passive summary only; restore execution remains manual and dry-run by default"`
+
+It also links decision semantics to readiness state: `restore_summary_ready` requires `summary_ready=true` and zero blocking issues, while `restore_summary_blocked` requires `summary_ready=false` and at least one blocker. The schema is intentionally strict with `additionalProperties=false` so downstream gates can detect accidental contract drift before reviewers promote evidence.
+
 ## Hosted release-gate evidence
 
 The `Restore Executor Release Gate` workflow now builds synthetic, non-mutating restore evidence during pull-request validation. It runs:
@@ -84,6 +96,7 @@ Before promoting restore executor evidence, confirm:
 4. The summary preserves manual invocation as a required boundary.
 5. Blocking issue count is zero.
 6. Hosted `restore-executor-release-evidence` includes the release summary JSON and compact report.
+7. The JSON Schema still matches the published summary fields before downstream release gates consume the artifact.
 
 ## Validation
 
@@ -103,10 +116,10 @@ Static Security Checks
 
 ## Rollback
 
-Revert `host_vm_policy_restore_release_summary.py`, `tests/test_host_vm_policy_restore_release_summary_static.sh`, this document, the changelog entry, and the restore release workflow wiring. No host, VM, package, firewall, service, IDS, dataset, or hypervisor state needs rollback.
+Revert `host_vm_policy_restore_release_summary.py`, `tests/test_host_vm_policy_restore_release_summary_static.sh`, this document, the changelog entry, the schema file, and the restore release workflow wiring. No host, VM, package, firewall, service, IDS, dataset, or hypervisor state needs rollback.
 
 ## Follow-up work
 
 - Feed restore summary output into the same aggregate posture gate as firstboot and IDS evidence.
 - Add reviewer-facing release notes whenever restore expected-blocked semantics change.
-- Consider adding a JSON Schema for restore summary artifacts once downstream consumers rely on the hosted evidence contract.
+- Add a hosted schema-validation step once the repository standardizes on a JSON Schema validator dependency.
