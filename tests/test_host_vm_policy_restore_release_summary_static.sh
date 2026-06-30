@@ -6,11 +6,20 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT="$ROOT_DIR/host_vm_policy_restore_release_summary.py"
+WORKFLOW="$ROOT_DIR/.github/workflows/restore-executor-release-gate.yml"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 python3 -m py_compile "$SCRIPT"
 
+# The hosted release gate must publish the passive summary artifacts alongside executor evidence.
+grep -q "host_vm_policy_restore_release_summary.py" "$WORKFLOW"
+grep -q "restore-release-summary.json" "$WORKFLOW"
+grep -q "restore-release-summary.report" "$WORKFLOW"
+grep -q "restore-executor-release-evidence" "$WORKFLOW"
+grep -q "expected-blocked-result" "$WORKFLOW"
+
+# The summary CLI remains passive, aggregate-only, and strict by default for release gates.
 grep -q "restore_summary_ready" "$SCRIPT"
 grep -q "restore_summary_blocked" "$SCRIPT"
 grep -q "restore_ready_dry_run" "$SCRIPT"

@@ -5,23 +5,29 @@ on:
     paths:
       - 'host_vm_policy_restore_execute.py'
       - 'host_vm_policy_restore_execute.service'
+      - 'host_vm_policy_restore_release_summary.py'
       - 'host_vm_restore_executor_wiring_check.py'
       - 'build_custom_iso.sh'
       - 'firstboot.sh'
       - 'vm_smoke_check.sh'
       - 'tests/**'
       - 'docs/host_vm_policy_restore_execute.md'
+      - 'docs/host_vm_policy_restore_release_summary.md'
+      - 'docs/changelog_restore_release_summary.md'
       - '.github/workflows/restore-executor-release-gate.yml'
   pull_request:
     paths:
       - 'host_vm_policy_restore_execute.py'
       - 'host_vm_policy_restore_execute.service'
+      - 'host_vm_policy_restore_release_summary.py'
       - 'host_vm_restore_executor_wiring_check.py'
       - 'build_custom_iso.sh'
       - 'firstboot.sh'
       - 'vm_smoke_check.sh'
       - 'tests/**'
       - 'docs/host_vm_policy_restore_execute.md'
+      - 'docs/host_vm_policy_restore_release_summary.md'
+      - 'docs/changelog_restore_release_summary.md'
       - '.github/workflows/restore-executor-release-gate.yml'
   workflow_dispatch:
 
@@ -45,12 +51,100 @@ jobs:
             --output /tmp/restore-executor-wiring.json \
             --report /tmp/restore-executor-wiring.report
 
-      - name: Upload wiring report
+      - name: Build passive restore release summary evidence
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          source_file="$workdir/host_vm_comm_guard.conf"
+          printf 'HOST_VM_GUARD_MODE=review-fixture\n' > "$source_file"
+          source_sha="$(sha256sum "$source_file" | awk '{print $1}')"
+          now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          python3 - "$workdir/restore-plan.json" "$source_file" "$source_sha" <<'PY'
+          import json
+          import sys
+          path, source, digest = sys.argv[1:]
+          json.dump({
+              'schema_version': 1,
+              'created_utc': 'fixture',
+              'decision': 'manual_restore_review_required',
+              'changes_live_state': False,
+              'actions': [{
+                  'name': 'host_vm_comm_guard.conf',
+                  'source': source,
+                  'target': '/etc/host_vm_comm_guard.conf',
+                  'status': 'manual_restore_candidate',
+                  'known_good': {'sha256': digest},
+              }],
+          }, open(path, 'w'))
+          PY
+
+          python3 - "$workdir/approval-valid.json" "$now" <<'PY'
+          import json
+          import sys
+          path, now = sys.argv[1:]
+          json.dump({
+              'schema_version': 1,
+              'created_utc': now,
+              'decision': 'approval_valid',
+              'changes_live_state': False,
+              'plan_decision': 'manual_restore_review_required',
+          }, open(path, 'w'))
+          PY
+
+          python3 - "$workdir/approval-blocked.json" "$now" <<'PY'
+          import json
+          import sys
+          path, now = sys.argv[1:]
+          json.dump({
+              'schema_version': 1,
+              'created_utc': now,
+              'decision': 'approval_review_required',
+              'changes_live_state': False,
+              'plan_decision': 'manual_restore_review_required',
+          }, open(path, 'w'))
+          PY
+
+          python3 host_vm_policy_restore_execute.py \
+            --plan "$workdir/restore-plan.json" \
+            --approval-check "$workdir/approval-valid.json" \
+            --output /tmp/restore-ready.json \
+            --report /tmp/restore-ready.report \
+            --max-approval-age-seconds 86400
+
+          set +e
+          python3 host_vm_policy_restore_execute.py \
+            --plan "$workdir/restore-plan.json" \
+            --approval-check "$workdir/approval-blocked.json" \
+            --output /tmp/restore-blocked.json \
+            --report /tmp/restore-blocked.report \
+            --max-approval-age-seconds 86400
+          blocked_status="$?"
+          set -e
+          if [ "$blocked_status" -ne 4 ]; then
+            echo "expected blocked restore fixture to exit 4, got $blocked_status" >&2
+            exit 1
+          fi
+
+          python3 host_vm_policy_restore_release_summary.py \
+            /tmp/restore-ready.json \
+            --expected-blocked-result /tmp/restore-blocked.json \
+            --output /tmp/restore-release-summary.json \
+            --report /tmp/restore-release-summary.report \
+            --strict
+
+      - name: Upload restore release evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: restore-executor-wiring-report
+          name: restore-executor-release-evidence
           path: |
             /tmp/restore-executor-wiring.json
             /tmp/restore-executor-wiring.report
+            /tmp/restore-ready.json
+            /tmp/restore-ready.report
+            /tmp/restore-blocked.json
+            /tmp/restore-blocked.report
+            /tmp/restore-release-summary.json
+            /tmp/restore-release-summary.report
           if-no-files-found: warn

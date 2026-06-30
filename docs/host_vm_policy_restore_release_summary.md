@@ -56,6 +56,24 @@ blocking_issue_count=0
 
 A blocked summary reports `decision=restore_summary_blocked` and records every blocking issue in both JSON and compact report form.
 
+## Hosted release-gate evidence
+
+The `Restore Executor Release Gate` workflow now builds synthetic, non-mutating restore evidence during pull-request validation. It runs:
+
+1. `host_vm_restore_executor_wiring_check.py` against repository text.
+2. `host_vm_policy_restore_execute.py` with a ready dry-run fixture.
+3. `host_vm_policy_restore_execute.py` with an expected-blocked approval fixture.
+4. `host_vm_policy_restore_release_summary.py --strict` over both executor outputs.
+
+The workflow uploads one artifact named `restore-executor-release-evidence` with:
+
+- `restore-executor-wiring.json` and `.report`
+- `restore-ready.json` and `.report`
+- `restore-blocked.json` and `.report`
+- `restore-release-summary.json` and `.report`
+
+The fixture uses temporary files only and does not write to `/etc`, start services, reload firewall rules, install packages, read raw telemetry, or contact external systems.
+
 ## Reviewer checklist
 
 Before promoting restore executor evidence, confirm:
@@ -65,6 +83,7 @@ Before promoting restore executor evidence, confirm:
 3. The summary declares no live-state changes and no raw telemetry reads.
 4. The summary preserves manual invocation as a required boundary.
 5. Blocking issue count is zero.
+6. Hosted `restore-executor-release-evidence` includes the release summary JSON and compact report.
 
 ## Validation
 
@@ -75,12 +94,19 @@ bash tests/test_host_vm_policy_restore_release_summary_static.sh
 bash tests/run_static_security_checks.sh
 ```
 
+Hosted validation:
+
+```text
+Restore Executor Release Gate
+Static Security Checks
+```
+
 ## Rollback
 
-Revert `host_vm_policy_restore_release_summary.py`, `tests/test_host_vm_policy_restore_release_summary_static.sh`, this document, the changelog entry, and the README navigation entry. No host, VM, package, firewall, service, IDS, dataset, or hypervisor state needs rollback.
+Revert `host_vm_policy_restore_release_summary.py`, `tests/test_host_vm_policy_restore_release_summary_static.sh`, this document, the changelog entry, and the restore release workflow wiring. No host, VM, package, firewall, service, IDS, dataset, or hypervisor state needs rollback.
 
 ## Follow-up work
 
-- Wire the restore release summary into a hosted restore executor release evidence workflow after repeated green static validation.
 - Feed restore summary output into the same aggregate posture gate as firstboot and IDS evidence.
 - Add reviewer-facing release notes whenever restore expected-blocked semantics change.
+- Consider adding a JSON Schema for restore summary artifacts once downstream consumers rely on the hosted evidence contract.
