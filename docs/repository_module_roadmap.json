@@ -174,5 +174,5 @@
       "rationale": "A single privacy-safe gate can compose Kali guest readiness, host/VM isolation, NN IDS health, drift, model-card, release receipts, and rollback readiness."
     }
   ],
-  "rollback": "Delete docs/repository_module_roadmap.json, docs/repository_module_roadmap.md, docs/changelog_repository_module_roadmap.md, and tests/test_repository_module_roadmap_static.sh. No live firewall, service, host, VM, IDS, approval, restore, model, dataset, account, credential, or network state requires rollback."
+  "rollback": "Delete docs/repository_module_roadmap.json, docs/repository_module_roadmap.md, docs/changelog_repository_module_roadmap.md, and tests/test_repository_module_roadmap.py. No live firewall, service, host, VM, IDS, approval, restore, model, dataset, account, credential, or network state requires rollback."
 }
