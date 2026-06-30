@@ -1,0 +1,106 @@
+name: Firstboot Handoff Release Gate
+
+on:
+  push:
+    paths:
+      - 'host_vm_policy_firstboot_dry_run.py'
+      - 'host_vm_policy_firstboot_handoff_gate.py'
+      - 'tests/test_host_vm_policy_firstboot_handoff_gate_static.sh'
+      - 'tests/test_firstboot_handoff_release_gate_workflow_static.sh'
+      - '.github/workflows/firstboot-handoff-release-gate.yml'
+  pull_request:
+    paths:
+      - 'host_vm_policy_firstboot_dry_run.py'
+      - 'host_vm_policy_firstboot_handoff_gate.py'
+      - 'tests/test_host_vm_policy_firstboot_handoff_gate_static.sh'
+      - 'tests/test_firstboot_handoff_release_gate_workflow_static.sh'
+      - '.github/workflows/firstboot-handoff-release-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firstboot-handoff-release-gate:
+    name: Passive firstboot handoff release gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run module static test
+        run: bash tests/test_host_vm_policy_firstboot_handoff_gate_static.sh
+
+      - name: Build hosted aggregate handoff bundle
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/firstboot-handoff-gate
+          printf '{"valid": true, "policy_id": "hosted_firstboot_handoff_gate"}\n' > /tmp/firstboot-handoff-gate/host_vm_policy_validator_evidence.json
+          printf '{"firstboot_dry_run": {"passive_only": true, "workflow": "Firstboot Handoff Release Gate"}}\n' > /tmp/firstboot-handoff-gate/host_vm_policy_firstboot_manifest.json
+          cat > /tmp/firstboot-handoff-gate/host_vm_policy_firstboot_handoff.json <<'JSON'
+          {
+            "handoff_schema_version": 1,
+            "wrapper": "host_vm_policy_firstboot_dry_run.py",
+            "wrapper_version": "1.0.0",
+            "validation": {
+              "valid": true,
+              "error_count": 0,
+              "errors": []
+            },
+            "generated_artifacts": {
+              "validator_evidence_json": "/tmp/firstboot-handoff-gate/host_vm_policy_validator_evidence.json",
+              "firstboot_manifest_json": "/tmp/firstboot-handoff-gate/host_vm_policy_firstboot_manifest.json"
+            },
+            "safety": {
+              "passive_only": true,
+              "mutates_host_or_vm_state": false,
+              "collects_credentials_or_secrets": false,
+              "enables_persistence_or_remote_access": false
+            },
+            "privacy_boundaries": {
+              "contains_raw_telemetry": false,
+              "contains_secret_material": false,
+              "forbidden_handoff_keys": [
+                "captures",
+                "credentials",
+                "datasets",
+                "hostnames",
+                "model_binaries",
+                "packets",
+                "private_keys",
+                "raw_logs",
+                "secrets",
+                "tokens",
+                "usernames"
+              ]
+            },
+            "rollback": {
+              "live_state_rollback_required": false
+            }
+          }
+          JSON
+
+      - name: Evaluate aggregate handoff evidence
+        run: |
+          python3 host_vm_policy_firstboot_handoff_gate.py \
+            /tmp/firstboot-handoff-gate/host_vm_policy_firstboot_handoff.json \
+            --strict \
+            --output /tmp/firstboot-handoff-gate/firstboot_handoff_gate.json \
+            --report /tmp/firstboot-handoff-gate/firstboot_handoff_gate.report
+
+      - name: Verify release-ready decision
+        run: |
+          grep -q '"decision": "release_ready"' /tmp/firstboot-handoff-gate/firstboot_handoff_gate.json
+          grep -q '^decision=release_ready$' /tmp/firstboot-handoff-gate/firstboot_handoff_gate.report
+
+      - name: Upload handoff gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firstboot-handoff-gate-evidence
+          path: |
+            /tmp/firstboot-handoff-gate/host_vm_policy_firstboot_handoff.json
+            /tmp/firstboot-handoff-gate/firstboot_handoff_gate.json
+            /tmp/firstboot-handoff-gate/firstboot_handoff_gate.report
+          if-no-files-found: error
