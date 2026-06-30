@@ -4,7 +4,7 @@
 
 - Added `docs/repository_module_roadmap.json`, a passive machine-readable roadmap artifact that maps repository modules to owner roles, generated artifacts, validation focus, rollback procedures, and future increment candidates.
 - Added `docs/repository_module_roadmap.md`, an operator-readable companion explaining the module ownership map, validation strategy, next increment queue, review checklist, and rollback path.
-- Added static coverage in `tests/test_repository_module_roadmap_static.sh` to validate the JSON contract, documentation coverage, passive safety boundaries, rollback wording, and roadmap linkage.
+- Added static coverage in `tests/test_repository_module_roadmap.py` to validate the JSON contract, documentation coverage, passive safety boundaries, rollback wording, and roadmap linkage.
 
 ## Security
 
@@ -19,7 +19,7 @@
 
 - Delete `docs/repository_module_roadmap.json`.
 - Delete `docs/repository_module_roadmap.md`.
-- Delete `tests/test_repository_module_roadmap_static.sh`.
+- Delete `tests/test_repository_module_roadmap.py`.
 - Delete this changelog fragment.
 
 No live firewall, service, host, VM, IDS, approval, restore, model, dataset, account, credential, or network state requires rollback.
