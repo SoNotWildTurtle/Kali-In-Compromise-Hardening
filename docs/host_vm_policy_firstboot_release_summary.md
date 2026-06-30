@@ -5,7 +5,7 @@
 - a `release_receipt_ready` artifact from the strict release-ready handoff path, and
 - an optional `release_receipt_blocked` artifact from the expected-blocked synthetic fixture.
 
-The summary is aggregate-only. It does not read raw telemetry, packet captures, hostnames, usernames, credentials, model binaries, datasets, private keys, tokens, logs, live service state, firewall state, package state, or hypervisor state. It only validates receipt JSON fields already emitted by the passive release gate workflow.
+The summary is aggregate-only. It does not read raw telemetry, packet captures, hostnames, usernames, credentials, model binaries, datasets, private keys, tokens, logs, live service state, firewall state, package state, or hypervisor state. It only validates receipt JSON fields already emitted by the passive release receipt workflow or local reviewer fixtures.
 
 ## Threat-model rationale
 
@@ -16,7 +16,7 @@ The summary is safe-by-default:
 - `changes_live_state=false`
 - `reads_raw_telemetry=false`
 - `aggregate_evidence_only=true`
-- rollback requires reverting summary wiring only
+- rollback requires reverting summary files only
 - `--strict` exits non-zero unless the summary is internally consistent
 
 ## Usage
@@ -62,7 +62,7 @@ Before using the summary as release evidence, reviewers should confirm:
 2. If the expected-blocked fixture is present, its decision is `release_receipt_blocked`.
 3. The summary declares no live-state changes and no raw telemetry reads.
 4. Blocking issue count is zero for the ready summary.
-5. Hosted workflow artifacts include both ready evidence and expected-negative evidence when the expected-blocked fixture is wired.
+5. Hosted workflow artifacts include both ready evidence and expected-negative evidence once workflow wiring is promoted in a follow-up increment.
 
 ## Validation
 
@@ -70,16 +70,16 @@ Focused validation:
 
 ```bash
 bash tests/test_host_vm_policy_firstboot_release_summary_static.sh
-bash tests/test_firstboot_handoff_release_gate_workflow_static.sh
 bash tests/run_static_security_checks.sh
 ```
 
 ## Rollback
 
-Revert `host_vm_policy_firstboot_release_summary.py`, `tests/test_host_vm_policy_firstboot_release_summary_static.sh`, this document, the changelog entry, and the workflow/static-test wiring that generates and uploads summary artifacts. No host, VM, package, firewall, service, IDS, dataset, or hypervisor state needs rollback.
+Revert `host_vm_policy_firstboot_release_summary.py`, `tests/test_host_vm_policy_firstboot_release_summary_static.sh`, this document, and the changelog entry. No host, VM, package, firewall, service, IDS, dataset, or hypervisor state needs rollback.
 
 ## Follow-up work
 
+- Wire the summary into the hosted firstboot handoff release gate after this standalone CLI and static coverage are green.
 - Feed restore executor and IDS aggregate release evidence into the same summary once those receipts expose compatible ready and expected-blocked semantics.
 - Add reviewer-facing release notes whenever expected-blocked summary semantics change.
 - Keep live firstboot packaging gated behind repeated green hosted summaries and explicit human review.
