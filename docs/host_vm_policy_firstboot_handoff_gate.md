@@ -42,20 +42,35 @@ Review invalid-profile evidence without treating `validation.valid=false` as the
 python3 host_vm_policy_firstboot_handoff_gate.py invalid_handoff.json --allow-invalid-profile
 ```
 
+## Release receipt
+
+`host_vm_policy_firstboot_release_receipt.py` consumes `firstboot_handoff_gate.json` and writes a compact `firstboot_release_receipt.json` plus optional text report. It is a second passive promotion boundary for CI artifacts and later aggregate release gates.
+
+```bash
+python3 host_vm_policy_firstboot_release_receipt.py \
+  /var/log/kali-hardening/host-vm-policy/firstboot_handoff_gate.json \
+  --strict \
+  --output /var/log/kali-hardening/host-vm-policy/firstboot_release_receipt.json \
+  --report /var/log/kali-hardening/host-vm-policy/firstboot_release_receipt.report
+```
+
+A strict receipt requires the source gate to be `release_ready`, report zero failed checks, keep `changes_live_state=false`, and keep `reads_raw_telemetry=false`. The receipt exits non-zero when the source gate is blocked, malformed, or not from `host_vm_policy_firstboot_handoff_gate.py`.
+
 ## Hosted workflow
 
-`.github/workflows/firstboot-handoff-release-gate.yml` runs the module static test, builds synthetic aggregate handoff evidence on the hosted runner, evaluates it with `--strict`, verifies the `release_ready` JSON/report decisions, and uploads only aggregate handoff gate evidence.
+`.github/workflows/firstboot-handoff-release-gate.yml` runs the module static tests, builds synthetic aggregate handoff evidence on the hosted runner, evaluates it with `--strict`, creates the release receipt, verifies the `release_ready` and `release_receipt_ready` JSON/report decisions, and uploads only aggregate handoff gate and receipt evidence.
 
 The workflow is intentionally passive. It does not install packages, start services, change firewall rules, touch host or VM state, collect credentials, read raw telemetry, or fetch external data.
 
 ## Exit behavior
 
-- Without `--strict`, the command exits `0` after writing a decision record.
-- With `--strict`, `release_ready` exits `0` and `release_blocked` exits `3`.
+- Without `--strict`, the handoff gate exits `0` after writing a decision record.
+- With `--strict`, handoff gate `release_ready` exits `0` and `release_blocked` exits `3`.
+- With `--strict`, release receipt `release_receipt_ready` exits `0` and `release_receipt_blocked` exits `4`.
 
 ## Threat-model rationale
 
-The dry-run wrapper made firstboot policy evidence reviewable. This gate adds a machine-readable promotion boundary so future packaging, firstboot, or CI wiring can fail closed before any live hardening integration is considered. The checks emphasize aggregate evidence, least privilege, privacy boundaries, and reversible review-only behavior.
+The dry-run wrapper made firstboot policy evidence reviewable. This gate and receipt pair add a machine-readable promotion boundary so future packaging, firstboot, or CI wiring can fail closed before any live hardening integration is considered. The checks emphasize aggregate evidence, least privilege, privacy boundaries, and reversible review-only behavior.
 
 ## Compatibility
 
@@ -63,10 +78,10 @@ This is additive. It does not alter existing validator commands, dry-run wrapper
 
 ## Rollback
 
-Revert `host_vm_policy_firstboot_handoff_gate.py`, `tests/test_host_vm_policy_firstboot_handoff_gate_static.sh`, this document, the workflow, workflow static test, and the changelog entries. No live system state requires rollback.
+Revert `host_vm_policy_firstboot_handoff_gate.py`, `host_vm_policy_firstboot_release_receipt.py`, their static tests, this document, the workflow, workflow static test, and the changelog entries. No live system state requires rollback.
 
 ## Follow-up work
 
-- Feed the hosted gate decision into a broader aggregate release-readiness receipt alongside restore executor, IDS audit, and policy attestation evidence.
+- Feed the firstboot release receipt into a broader aggregate release-readiness receipt alongside restore executor, IDS audit, and policy attestation evidence.
 - Add packaging/firstboot wiring only after repeated workflow coverage is green and the default bundle path is stable.
-- Add expected-failure artifacts for intentionally blocked handoffs once the release receipt can distinguish blocked evidence from workflow failure.
+- Add expected-failure artifacts for intentionally blocked handoffs once the aggregate release receipt can distinguish blocked evidence from workflow failure.

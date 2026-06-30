@@ -5,14 +5,18 @@ on:
     paths:
       - 'host_vm_policy_firstboot_dry_run.py'
       - 'host_vm_policy_firstboot_handoff_gate.py'
+      - 'host_vm_policy_firstboot_release_receipt.py'
       - 'tests/test_host_vm_policy_firstboot_handoff_gate_static.sh'
+      - 'tests/test_host_vm_policy_firstboot_release_receipt_static.sh'
       - 'tests/test_firstboot_handoff_release_gate_workflow_static.sh'
       - '.github/workflows/firstboot-handoff-release-gate.yml'
   pull_request:
     paths:
       - 'host_vm_policy_firstboot_dry_run.py'
       - 'host_vm_policy_firstboot_handoff_gate.py'
+      - 'host_vm_policy_firstboot_release_receipt.py'
       - 'tests/test_host_vm_policy_firstboot_handoff_gate_static.sh'
+      - 'tests/test_host_vm_policy_firstboot_release_receipt_static.sh'
       - 'tests/test_firstboot_handoff_release_gate_workflow_static.sh'
       - '.github/workflows/firstboot-handoff-release-gate.yml'
   workflow_dispatch:
@@ -29,8 +33,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Run module static test
-        run: bash tests/test_host_vm_policy_firstboot_handoff_gate_static.sh
+      - name: Run module static tests
+        run: |
+          bash tests/test_host_vm_policy_firstboot_handoff_gate_static.sh
+          bash tests/test_host_vm_policy_firstboot_release_receipt_static.sh
 
       - name: Build hosted aggregate handoff bundle
         run: |
@@ -89,10 +95,20 @@ jobs:
             --output /tmp/firstboot-handoff-gate/firstboot_handoff_gate.json \
             --report /tmp/firstboot-handoff-gate/firstboot_handoff_gate.report
 
+      - name: Build release-readiness receipt
+        run: |
+          python3 host_vm_policy_firstboot_release_receipt.py \
+            /tmp/firstboot-handoff-gate/firstboot_handoff_gate.json \
+            --strict \
+            --output /tmp/firstboot-handoff-gate/firstboot_release_receipt.json \
+            --report /tmp/firstboot-handoff-gate/firstboot_release_receipt.report
+
       - name: Verify release-ready decision
         run: |
           grep -q '"decision": "release_ready"' /tmp/firstboot-handoff-gate/firstboot_handoff_gate.json
           grep -q '^decision=release_ready$' /tmp/firstboot-handoff-gate/firstboot_handoff_gate.report
+          grep -q '"decision": "release_receipt_ready"' /tmp/firstboot-handoff-gate/firstboot_release_receipt.json
+          grep -q '^decision=release_receipt_ready$' /tmp/firstboot-handoff-gate/firstboot_release_receipt.report
 
       - name: Upload handoff gate evidence
         if: always()
@@ -103,4 +119,6 @@ jobs:
             /tmp/firstboot-handoff-gate/host_vm_policy_firstboot_handoff.json
             /tmp/firstboot-handoff-gate/firstboot_handoff_gate.json
             /tmp/firstboot-handoff-gate/firstboot_handoff_gate.report
+            /tmp/firstboot-handoff-gate/firstboot_release_receipt.json
+            /tmp/firstboot-handoff-gate/firstboot_release_receipt.report
           if-no-files-found: error
