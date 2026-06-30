@@ -1,4 +1,5 @@
 # MINC - Regression coverage for passive host/VM policy validation CLI evidence.
+import hashlib
 import json
 import subprocess
 import sys
@@ -8,6 +9,7 @@ from pathlib import Path
 VALIDATOR_PATH = Path("host_vm_policy_validator.py")
 DOC_PATH = Path("docs/host_vm_policy_validator_cli.md")
 CHANGELOG_PATH = Path("docs/changelog_host_vm_policy_validator_cli.md")
+MANIFEST_CHANGELOG_PATH = Path("docs/changelog_host_vm_policy_manifest_evidence.md")
 
 
 def valid_profile() -> dict:
@@ -76,6 +78,8 @@ def test_validator_accepts_valid_profile_and_emits_passive_json_evidence(tmp_pat
     evidence = json.loads(result.stdout)
     assert evidence["valid"] is True
     assert evidence["policy_id"] == "default_firstboot_review"
+    assert evidence["validator_version"] == "1.1.0"
+    assert evidence["profile_sha256"] == hashlib.sha256(profile_path.read_bytes()).hexdigest()
     assert evidence["summary"]["remote_host_mutation_allowed"] is False
     assert evidence["summary"]["aggregate_only"] is True
     assert evidence["safety"] == {
@@ -118,23 +122,65 @@ def test_validator_markdown_output_and_file_write_are_operator_friendly(tmp_path
     assert result.stdout == ""
     markdown = output_path.read_text(encoding="utf-8")
     assert "# Host/VM Policy Validation: PASS" in markdown
+    assert "Profile SHA-256" in markdown
     assert "Passive only: `True`" in markdown
     assert "Mutates host or VM state: `False`" in markdown
     assert "firstboot_handoff_index_json" in markdown
+
+
+def test_validator_manifest_output_records_hash_evidence_path_and_handoff(tmp_path: Path) -> None:
+    profile_path = tmp_path / "valid_policy.json"
+    evidence_path = tmp_path / "evidence.json"
+    manifest_path = tmp_path / "manifest.json"
+    profile_path.write_text(json.dumps(valid_profile(), sort_keys=True), encoding="utf-8")
+
+    result = run_validator(
+        profile_path,
+        "--output",
+        str(evidence_path),
+        "--manifest-output",
+        str(manifest_path),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    expected_hash = hashlib.sha256(profile_path.read_bytes()).hexdigest()
+
+    assert evidence["profile_sha256"] == expected_hash
+    assert manifest["manifest_schema_version"] == 1
+    assert manifest["validator"] == "host_vm_policy_validator.py"
+    assert manifest["validator_version"] == evidence["validator_version"] == "1.1.0"
+    assert manifest["profile_path"] == str(profile_path)
+    assert manifest["profile_sha256"] == expected_hash
+    assert manifest["evidence"]["format"] == "json"
+    assert manifest["evidence"]["path"] == str(evidence_path)
+    assert manifest["evidence"]["aggregate_only"] is True
+    assert manifest["safety"]["passive_only"] is True
+    assert manifest["safety"]["mutates_host_or_vm_state"] is False
+    assert manifest["safety"]["reads_raw_telemetry"] is False
+    assert manifest["handoff"]["follow_up_owner"] == "operator"
+    assert "no live host or VM state rollback" in manifest["handoff"]["rollback_scope"]
 
 
 def test_validator_docs_and_changelog_describe_safe_usage() -> None:
     source = VALIDATOR_PATH.read_text(encoding="utf-8")
     doc = DOC_PATH.read_text(encoding="utf-8")
     changelog = CHANGELOG_PATH.read_text(encoding="utf-8")
+    manifest_changelog = MANIFEST_CHANGELOG_PATH.read_text(encoding="utf-8")
 
     assert "Passive host/VM policy profile validator" in source
     assert "standard library" in source
     assert "mutates_host_or_vm_state" in source
     assert "reads_raw_telemetry" in source
+    assert "--manifest-output" in source
     assert "host_vm_policy_validator.py" in doc
     assert "python3 host_vm_policy_validator.py examples/host_vm_policy_default_review.json" in doc
+    assert "profile_sha256" in doc
     assert "does not mutate host or VM state" in doc
     assert "Rollback" in doc
     assert "host_vm_policy_validator.py" in changelog
     assert "No service, timer, firstboot hook, firewall rule, network interface" in changelog
+    assert "manifest" in manifest_changelog
+    assert "profile SHA-256" in manifest_changelog
