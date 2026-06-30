@@ -56,6 +56,8 @@ python3 host_vm_policy_firstboot_release_receipt.py \
 
 A strict receipt requires the source gate to be `release_ready`, report zero failed checks, keep `changes_live_state=false`, and keep `reads_raw_telemetry=false`. The receipt exits non-zero when the source gate is blocked, malformed, or not from `host_vm_policy_firstboot_handoff_gate.py`.
 
+See `docs/firstboot_release_receipt_blocked_examples.md` for expected blocked receipt behavior, including normal blocked gate evidence versus malformed evidence. Blocked examples are intentionally synthetic and aggregate-only so reviewers can validate fail-closed behavior without mutating host or VM state.
+
 ## Hosted workflow
 
 `.github/workflows/firstboot-handoff-release-gate.yml` runs the module static tests, builds synthetic aggregate handoff evidence on the hosted runner, evaluates it with `--strict`, creates the release receipt, verifies the `release_ready` and `release_receipt_ready` JSON/report decisions, and uploads only aggregate handoff gate and receipt evidence.
