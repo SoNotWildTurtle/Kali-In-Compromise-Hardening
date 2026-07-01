@@ -6,9 +6,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOC="$ROOT_DIR/docs/nn_ids_alert_triage_playbook.md"
-CHANGELOG="$ROOT_DIR/CHANGELOG.md"
+CHANGELOG="$ROOT_DIR/changelog.d/nn_ids_alert_triage_playbook.md"
 
 [[ -f "$DOC" ]]
+[[ -f "$CHANGELOG" ]]
 
 # The playbook must preserve passive safety and privacy boundaries.
 grep -q "aggregate-only" "$DOC"
@@ -40,7 +41,8 @@ grep -q "fail closed" "$DOC"
 grep -q "Accessibility and handoff guidance" "$DOC"
 grep -q "Rollback" "$DOC"
 
-# Changelog must advertise the additive documentation and passive security boundary.
+# Changelog fragment must advertise the additive documentation and passive security boundary.
 grep -q "nn_ids_alert_triage_playbook.md" "$CHANGELOG"
 grep -q "passive NN IDS alert triage playbook" "$CHANGELOG"
 grep -q "does not read packets, payloads, raw telemetry, secrets, live host state, VM state, or hypervisor state" "$CHANGELOG"
+grep -q "bash tests/test_nn_ids_alert_triage_playbook_static.sh" "$CHANGELOG"
