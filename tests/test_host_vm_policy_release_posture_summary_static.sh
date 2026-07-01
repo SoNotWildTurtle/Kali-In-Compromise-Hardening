@@ -14,6 +14,8 @@ grep -q "release_posture_ready" "$SCRIPT"
 grep -q "release_posture_blocked" "$SCRIPT"
 grep -q "aggregate_evidence_only" "$SCRIPT"
 grep -q "requires_human_review_before_release_promotion" "$SCRIPT"
+grep -q "evidence_manifest" "$SCRIPT"
+grep -q "contains_secrets" "$SCRIPT"
 
 cat > "$TMPDIR/firstboot-summary.json" <<'JSON'
 {
@@ -81,12 +83,22 @@ assert posture['blocking_issues'] == [], posture
 assert posture['components']['firstboot']['decision'] == 'summary_ready', posture
 assert posture['components']['restore']['decision'] == 'restore_summary_ready', posture
 assert posture['reviewer_handoff']['requires_human_review_before_release_promotion'] is True, posture
+assert posture['evidence_manifest']['schema_path'] == 'docs/schemas/host_vm_policy_release_posture_summary.schema.json', posture
+assert 'Static Security Checks' in posture['evidence_manifest']['hosted_required_checks'], posture
+assert 'Restore Executor Release Gate' in posture['evidence_manifest']['hosted_required_checks'], posture
+assert posture['evidence_manifest']['safe_to_publish'] is True, posture
+assert posture['evidence_manifest']['contains_raw_telemetry'] is False, posture
+assert posture['evidence_manifest']['contains_secrets'] is False, posture
+assert posture['evidence_manifest']['human_review_required'] is True, posture
 assert posture['rollback']['live_state_rollback_required'] is False, posture
 PY
 
 grep -q '^decision=release_posture_ready$' "$TMPDIR/posture.report"
 grep -q '^posture_ready=true$' "$TMPDIR/posture.report"
 grep -q '^blocking_issue_count=0$' "$TMPDIR/posture.report"
+grep -q '^schema_path=docs/schemas/host_vm_policy_release_posture_summary.schema.json$' "$TMPDIR/posture.report"
+grep -q '^safe_to_publish=true$' "$TMPDIR/posture.report"
+grep -q '^contains_secrets=false$' "$TMPDIR/posture.report"
 
 python3 - "$TMPDIR/restore-summary.json" <<'PY'
 import json, sys
@@ -113,6 +125,8 @@ import json, sys
 posture = json.load(open(sys.argv[1]))
 assert posture['decision'] == 'release_posture_blocked', posture
 assert posture['posture_ready'] is False, posture
+assert posture['evidence_manifest']['safe_to_publish'] is True, posture
+assert posture['evidence_manifest']['contains_secrets'] is False, posture
 assert any('restore summary decision must be restore_summary_ready' in issue for issue in posture['blocking_issues']), posture
 assert any('restore summary_ready must be true' in issue for issue in posture['blocking_issues']), posture
 PY
