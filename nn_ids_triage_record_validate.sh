@@ -75,10 +75,6 @@ if grep -Eq '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-
   fail 'record appears to contain a private key or access token pattern'
 fi
 
-if grep -Eq '(^|[^A-Za-z0-9_])(packet capture|pcap|payload|raw telemetry|credential|secret|endpoint identifier|host identifier|VM identifier)([^A-Za-z0-9_]|$)' "$record_path"; then
-  fail 'record mentions raw telemetry, payloads, secrets, or identifiers instead of aggregate-only evidence'
-fi
-
 declare -A fields=()
 while IFS= read -r line || [[ -n "$line" ]]; do
   [[ -z "$line" ]] && continue
@@ -135,6 +131,12 @@ esac
 privacy_scope="${fields[privacy_scope]:-}"
 [[ "$privacy_scope" == *aggregate-only* ]] || fail 'privacy_scope must explicitly include aggregate-only'
 [[ "$privacy_scope" == *'no raw telemetry or secrets'* ]] || fail 'privacy_scope must explicitly reject raw telemetry and secrets'
+
+for unsafe_key in packet_capture pcap payload raw_telemetry credential secret endpoint_identifier host_identifier vm_identifier; do
+  if [[ -n "${fields[$unsafe_key]+set}" ]]; then
+    fail "record must not include unsafe raw-data key: $unsafe_key"
+  fi
+done
 
 [[ "${fields[uncertainty_note]:-}" == *estimate* || "${fields[uncertainty_note]:-}" == *uncertainty* ]] || \
   fail 'uncertainty_note must explain uncertainty or estimate limits'
