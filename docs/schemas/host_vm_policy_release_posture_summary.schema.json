@@ -17,6 +17,7 @@
     "components",
     "blocking_issues",
     "reviewer_handoff",
+    "evidence_manifest",
     "rollback",
     "follow_up"
   ],
@@ -66,6 +67,38 @@
         "confirm_no_live_state_change": {"const": true},
         "confirm_no_raw_telemetry": {"const": true},
         "requires_human_review_before_release_promotion": {"const": true}
+      }
+    },
+    "evidence_manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_path",
+        "static_validation_commands",
+        "hosted_required_checks",
+        "safe_to_publish",
+        "contains_raw_telemetry",
+        "contains_secrets",
+        "live_state_validation_required",
+        "human_review_required"
+      ],
+      "properties": {
+        "schema_path": {"const": "docs/schemas/host_vm_policy_release_posture_summary.schema.json"},
+        "static_validation_commands": {
+          "type": "array",
+          "minItems": 3,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "hosted_required_checks": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "safe_to_publish": {"const": true},
+        "contains_raw_telemetry": {"const": false},
+        "contains_secrets": {"const": false},
+        "live_state_validation_required": {"const": false},
+        "human_review_required": {"const": true}
       }
     },
     "rollback": {
