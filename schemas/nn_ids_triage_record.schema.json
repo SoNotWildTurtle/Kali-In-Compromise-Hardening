@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SoNotWildTurtle/Kali-In-Compromise-Hardening/schemas/nn_ids_triage_record.schema.json",
+  "title": "Passive NN IDS triage record",
+  "description": "Machine-readable contract for aggregate-only NN IDS triage handoff records. The record is evidence only and never authorizes live action.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "triage_decision",
+    "release_ready",
+    "source_artifacts",
+    "artifact_hashes",
+    "blocking_issues",
+    "uncertainty_note",
+    "privacy_scope",
+    "human_review_required",
+    "live_action_authorized",
+    "rollback_reference",
+    "next_evidence_needed",
+    "owner"
+  ],
+  "properties": {
+    "triage_decision": {
+      "type": "string",
+      "enum": ["pass", "watch", "degraded", "blocked"],
+      "description": "Reviewer-owned passive triage decision. Degraded and blocked remain valid handoff evidence but are not release-gate promotion states."
+    },
+    "release_ready": {
+      "type": "boolean",
+      "description": "True only when aggregate evidence is current, reviewed, and free of blocking issues."
+    },
+    "source_artifacts": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "(^|,)nn_ids_[A-Za-z0-9_.-]+",
+      "description": "Comma-separated aggregate NN IDS evidence artifacts. Do not include raw telemetry, packet captures, payloads, secrets, or host/VM identifiers."
+    },
+    "artifact_hashes": {
+      "type": "string",
+      "minLength": 1,
+      "anyOf": [
+        {"pattern": "sha256"},
+        {"pattern": "^manifest:"}
+      ],
+      "description": "SHA-256 evidence references or a manifest reference that points to aggregate artifact hashes."
+    },
+    "blocking_issues": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Use none for release-ready records; otherwise summarize blockers without operational commands."
+    },
+    "uncertainty_note": {
+      "type": "string",
+      "minLength": 1,
+      "anyOf": [
+        {"pattern": "estimate"},
+        {"pattern": "uncertainty"}
+      ],
+      "description": "Required explanation that the record is an analytical estimate or uncertainty-bounded handoff."
+    },
+    "privacy_scope": {
+      "type": "string",
+      "pattern": "aggregate-only; no raw telemetry or secrets",
+      "description": "Must explicitly remain aggregate-only and exclude raw telemetry and secrets."
+    },
+    "human_review_required": {
+      "const": true,
+      "description": "Human review remains mandatory even for release-ready pass/watch evidence."
+    },
+    "live_action_authorized": {
+      "const": false,
+      "description": "Triage records never authorize live IDS, host, VM, hypervisor, firewall, restore, retraining, or response actions."
+    },
+    "rollback_reference": {
+      "type": "string",
+      "minLength": 1,
+      "anyOf": [
+        {"pattern": "^docs/"},
+        {"pattern": "rollback"}
+      ],
+      "description": "Documentation or PR notes explaining safe rollback."
+    },
+    "next_evidence_needed": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Reviewer-owned next aggregate evidence or freshness check needed before handoff or release."
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Review role or team accountable for the handoff record."
+    }
+  },
+  "release_gate_contract": {
+    "description": "Release gates may accept only pass/watch decisions with release_ready=true, blocking_issues beginning with none, human_review_required=true, live_action_authorized=false, and aggregate-only privacy scope. Degraded and blocked records are valid handoff evidence but must fail release-gate promotion."
+  },
+  "safety_boundaries": [
+    "passive evidence only",
+    "aggregate-only; no raw telemetry or secrets",
+    "human_review_required=true",
+    "live_action_authorized=false",
+    "no operational commands",
+    "no private keys or access tokens",
+    "no host identifiers or VM identifiers"
+  ]
+}
