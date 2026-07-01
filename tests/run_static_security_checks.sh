@@ -1,3 +1,103 @@
+#!/usr/bin/env bash
+# MINC - Repo-wide static validation for defensive Kali hardening modules.
+# This test is defensive only: it verifies syntax, packaging coverage, and service wiring.
+# Restore executor release gate token: host_vm_policy_restore_execute_static.sh
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+failures=0
+
+note() {
+    printf '[static-check] %s\n' "$*"
+}
+
+fail() {
+    printf '[static-check][FAIL] %s\n' "$*" >&2
+    failures=$((failures + 1))
+}
+
+require_file() {
+    local file="$1"
+    [[ -f "$file" ]] || fail "missing required file: $file"
+}
+
+note "checking required top-level orchestrators"
+require_file build_custom_iso.sh
+require_file firstboot.sh
+require_file README.md
+
+note "checking shell syntax"
+while IFS= read -r -d '' script; do
+    bash -n "$script" || fail "bash syntax failed: $script"
+done < <(find . -maxdepth 3 -type f \( -name '*.sh' -o -path './tests/*.sh' \) -print0)
+
+note "checking Python syntax"
+while IFS= read -r -d '' pyfile; do
+    python3 -m py_compile "$pyfile" || fail "python compile failed: $pyfile"
+done < <(find . -maxdepth 2 -type f -name '*.py' -print0)
+
+note "checking ISO packaging coverage for systemd units and executable modules"
+python3 - <<'PY'
+import pathlib
+import re
+import sys
+
+root = pathlib.Path('.')
+build = (root / 'build_custom_iso.sh').read_text(encoding='utf-8')
+firstboot = (root / 'firstboot.sh').read_text(encoding='utf-8')
+smoke = (root / 'vm_smoke_check.sh').read_text(encoding='utf-8')
+errors = []
+
+# All repository systemd units should be explicitly packaged unless generated at build time.
+for unit in sorted(list(root.glob('*.service')) + list(root.glob('*.timer'))):
+    name = unit.name
+    if name == 'firstboot.service':
+        continue
+    if f'"{name}"' not in build and f"'{name}'" not in build:
+        errors.append(f'{name} exists but is not listed in build_custom_iso.sh')
+
+# Every packaged module reference should point at a real file, except the firstboot.service
+# generated inside build_custom_iso.sh.
+packaged = set(re.findall(r'"([A-Za-z0-9_.-]+\.(?:sh|py|service|timer|ps1|conf|cfg|logrotate))"', build))
+for name in sorted(packaged):
+    if name == 'firstboot.service':
+        continue
+    if not (root / name).exists():
+        errors.append(f'build_custom_iso.sh packages missing file {name}')
+
+# firstboot should only enable/start units that exist in the repo or are generated at ISO build time.
+unit_refs = set(re.findall(r'\^([A-Za-z0-9_.@-]+\.(?:service|timer))', firstboot))
+unit_refs.update(re.findall(r'systemctl\s+(?:enable --now|enable|start|restart)\s+([A-Za-z0-9_.@-]+\.(?:service|timer))', firstboot))
+for unit_name in sorted(unit_refs):
+    if unit_name == 'firstboot.service':
+        continue
+    if not (root / unit_name).exists():
+        errors.append(f'firstboot.sh references missing unit {unit_name}')
+
+# Make sure the critical NN audit/attestation/verification chain remains wired in order.
+required_order = [
+    'nn_ids_model_audit.timer',
+    'nn_ids_model_audit.py',
+    'nn_ids_audit_gate.timer',
+    'nn_ids_audit_gate.py',
+    'host_vm_policy_attest.timer',
+    'host_vm_policy_attest.py',
+    'host_vm_policy_verify.timer',
+    'host_vm_policy_verify.py --init-baseline',
+    'host_vm_policy_verify.firstboot.log',
+]
+positions = []
+for token in required_order:
+    pos = firstboot.find(token)
+    if pos == -1:
+        errors.append(f'firstboot.sh missing audit/attestation/verification chain token {token}')
+    positions.append(pos)
+if all(pos >= 0 for pos in positions) and positions != sorted(positions):
+    errors.append('firstboot.sh should run model audit, audit gate, policy attestation, then policy verification')
+
 # Critical guardrails added by recent runs should remain present and covered.
 for token in [
     'host_vm_comm_guard.sh',
@@ -59,3 +159,36 @@ if 'host_vm_policy_restore_execute.timer' in build or 'host_vm_policy_restore_ex
 
 if errors:
     for error in errors:
+        print(f'[static-check][FAIL] {error}', file=sys.stderr)
+    sys.exit(1)
+print('[static-check] ISO, firstboot, smoke, and restore-executor wiring checks passed')
+PY
+
+note "checking baseline hardening in high-risk systemd units"
+for unit in \
+    nn_ids_model_audit.service \
+    nn_ids_audit_gate.service \
+    host_vm_comm_guard.service \
+    host_vm_policy_attest.service \
+    host_vm_policy_verify.service \
+    host_vm_policy_restore_execute.service; do
+    require_file "$unit"
+    grep -q '^NoNewPrivileges=true' "$unit" || fail "$unit missing NoNewPrivileges=true"
+    grep -q '^PrivateTmp=true' "$unit" || fail "$unit missing PrivateTmp=true"
+    grep -q '^ProtectSystem=' "$unit" || fail "$unit missing ProtectSystem"
+done
+
+note "running module-specific static tests"
+while IFS= read -r -d '' test_script; do
+    case "$(basename "$test_script")" in
+        run_static_security_checks.sh) continue ;;
+    esac
+    bash "$test_script" || fail "module test failed: $test_script"
+done < <(find tests -maxdepth 1 -type f -name 'test_*_static.sh' -print0 | sort -z)
+
+if [[ "$failures" -ne 0 ]]; then
+    fail "static validation completed with $failures failure(s)"
+    exit 1
+fi
+
+note "all repo-wide static security checks passed"
