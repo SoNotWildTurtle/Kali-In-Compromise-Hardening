@@ -40,6 +40,24 @@ python3 host_vm_policy_release_posture_summary.py \
 
 The JSON output contains component decisions, blocking issue counts, passive safety fields, reviewer handoff details, rollback notes, and follow-up work. The compact report mirrors the same posture decision in key/value form for shell-based gates.
 
+## JSON Schema contract
+
+The posture artifact schema lives at:
+
+```text
+docs/schemas/host_vm_policy_release_posture_summary.schema.json
+```
+
+The schema requires the passive safety contract to remain explicit:
+
+- `changes_live_state=false`
+- `reads_raw_telemetry=false`
+- `aggregate_evidence_only=true`
+- `reviewer_handoff.requires_human_review_before_release_promotion=true`
+- `rollback.live_state_rollback_required=false`
+
+It also ties `release_posture_ready` to `posture_ready=true` and an empty `blocking_issues` list, while `release_posture_blocked` must carry at least one blocking issue. The schema is intentionally stored as documentation rather than as a runtime dependency so release gates can validate examples without requiring third-party Python packages.
+
 ## Threat-model rationale
 
 This layer reduces reviewer error by producing one machine-readable posture decision from two independent release summaries. It intentionally consumes only aggregate summaries rather than raw firstboot logs, restore executor output, telemetry, IDS data, or system state. That keeps the posture gate auditable, reproducible, and safe to publish as release evidence.
@@ -56,6 +74,7 @@ Focused validation:
 
 ```bash
 bash tests/test_host_vm_policy_release_posture_summary_static.sh
+bash tests/test_host_vm_policy_release_posture_summary_schema_static.sh
 bash tests/run_static_security_checks.sh
 ```
 
@@ -67,16 +86,16 @@ Static Security Checks
 
 ## Rollback
 
-Revert `host_vm_policy_release_posture_summary.py`, `tests/test_host_vm_policy_release_posture_summary_static.sh`, this document, and the changelog entry. No host, VM, package, service, firewall, hypervisor, IDS, dataset, model, or telemetry state requires rollback.
+Revert `host_vm_policy_release_posture_summary.py`, `tests/test_host_vm_policy_release_posture_summary_static.sh`, `tests/test_host_vm_policy_release_posture_summary_schema_static.sh`, `docs/schemas/host_vm_policy_release_posture_summary.schema.json`, this document, and the changelog entry. No host, VM, package, service, firewall, hypervisor, IDS, dataset, model, or telemetry state requires rollback.
 
 ## Known limitations
 
 - This does not yet consume IDS aggregate evidence because IDS readiness artifacts do not use the same ready/blocked release-summary semantics.
-- This is not yet wired into a hosted aggregate release gate; it is a local/reviewer CLI plus static coverage.
-- A JSON Schema contract for the posture artifact should be added after the field set stabilizes.
+- This is not yet wired into a hosted aggregate release gate; it is a local/reviewer CLI plus static/schema coverage.
+- The schema test is dependency-free and intentionally checks the repository contract fields rather than implementing a full JSON Schema engine.
 
 ## Follow-up work
 
 - Add an IDS aggregate release summary with matching passive ready/blocked semantics.
-- Add a JSON Schema contract and dependency-free example validation for posture artifacts.
+- Add hosted schema validation once the repository adopts a JSON Schema validation dependency or reusable validator.
 - Wire firstboot, restore, and IDS aggregate evidence into one hosted release posture workflow.
