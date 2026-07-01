@@ -7,7 +7,7 @@
 
 ## Security
 
-- The examples are documentation-only and do not inspect live IDS, host, VM, or hypervisor state; this exact passive-boundary wording is covered by static validation.
+- The examples are documentation-only and do not inspect live IDS, host, VM, or hypervisor state; they also state that each record does not inspect live IDS data or grant runtime authority, and this exact passive-boundary wording is covered by static validation.
 - Records keep `human_review_required=true`, `live_action_authorized=false`, aggregate-only evidence, and uncertainty notes so examples cannot be mistaken for permission to remediate, restore, retrain, mutate firewall rules, mutate services, or change hypervisor state.
 
 ## Validation
