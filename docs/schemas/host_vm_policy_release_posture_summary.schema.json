@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/kali-in-compromise-hardening/host-vm-policy-release-posture-summary.schema.json",
+  "title": "Host/VM Policy Aggregate Release Posture Summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "summary",
+    "summary_version",
+    "created_utc",
+    "decision",
+    "posture_ready",
+    "changes_live_state",
+    "reads_raw_telemetry",
+    "aggregate_evidence_only",
+    "components",
+    "blocking_issues",
+    "reviewer_handoff",
+    "rollback",
+    "follow_up"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "summary": {"const": "host_vm_policy_release_posture_summary.py"},
+    "summary_version": {"type": "string", "minLength": 1},
+    "created_utc": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "decision": {
+      "enum": ["release_posture_ready", "release_posture_blocked"]
+    },
+    "posture_ready": {"type": "boolean"},
+    "changes_live_state": {"const": false},
+    "reads_raw_telemetry": {"const": false},
+    "aggregate_evidence_only": {"const": true},
+    "components": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["firstboot", "restore"],
+      "properties": {
+        "firstboot": {"$ref": "#/$defs/component"},
+        "restore": {"$ref": "#/$defs/component"}
+      }
+    },
+    "blocking_issues": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "reviewer_handoff": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "purpose",
+        "confirm_firstboot_summary_ready",
+        "confirm_restore_summary_ready",
+        "confirm_no_live_state_change",
+        "confirm_no_raw_telemetry",
+        "requires_human_review_before_release_promotion"
+      ],
+      "properties": {
+        "purpose": {"type": "string", "minLength": 1},
+        "confirm_firstboot_summary_ready": {"const": "summary_ready"},
+        "confirm_restore_summary_ready": {"const": "restore_summary_ready"},
+        "confirm_no_live_state_change": {"const": true},
+        "confirm_no_raw_telemetry": {"const": true},
+        "requires_human_review_before_release_promotion": {"const": true}
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["live_state_rollback_required", "action"],
+      "properties": {
+        "live_state_rollback_required": {"const": false},
+        "action": {"type": "string", "minLength": 1}
+      }
+    },
+    "follow_up": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"decision": {"const": "release_posture_ready"}}},
+      "then": {
+        "properties": {
+          "posture_ready": {"const": true},
+          "blocking_issues": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"decision": {"const": "release_posture_blocked"}}},
+      "then": {
+        "properties": {
+          "posture_ready": {"const": false},
+          "blocking_issues": {"minItems": 1}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "decision",
+        "ready",
+        "blocking_issue_count",
+        "changes_live_state",
+        "reads_raw_telemetry",
+        "aggregate_evidence_only",
+        "label"
+      ],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "decision": {"type": ["string", "null"]},
+        "ready": {"type": ["boolean", "null"]},
+        "blocking_issue_count": {"type": ["integer", "null"], "minimum": 0},
+        "changes_live_state": {"type": ["boolean", "null"]},
+        "reads_raw_telemetry": {"type": ["boolean", "null"]},
+        "aggregate_evidence_only": {"type": ["boolean", "null"]},
+        "label": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}
