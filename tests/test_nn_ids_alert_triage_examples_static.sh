@@ -91,7 +91,8 @@ for token in \
   "nn_ids_alert_triage_examples.md" \
   "synthetic" \
   "documentation-only" \
-  "does not inspect live IDS, host, VM, or hypervisor state" \
+  "does not inspect live IDS" \
+  "host, VM, or hypervisor state" \
   "bash tests/test_nn_ids_alert_triage_examples_static.sh"; do
   require_changelog "$token"
 done
