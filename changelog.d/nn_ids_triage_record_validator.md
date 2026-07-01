@@ -7,6 +7,7 @@
 - Added `tests/test_nn_ids_triage_record_validator_static.sh` to verify validator syntax, documentation coverage, changelog coverage, accepted handoff records, release-gate behavior, and fail-closed malformed or unsafe records.
 - Added `--print-template` so reviewers can generate a conservative aggregate-only starter record that defaults to `triage_decision=watch`, `release_ready=false`, `human_review_required=true`, and `live_action_authorized=false`.
 - Added fixture records in `examples/nn_ids_triage_records/pass_release_ready.env` and `examples/nn_ids_triage_records/watch_handoff.env`, plus `tests/test_nn_ids_triage_fixtures_static.sh`, so reviewer handoffs and release notes can reuse validated passive examples.
+- Added degraded and blocked fixture records in `examples/nn_ids_triage_records/degraded_handoff.env` and `examples/nn_ids_triage_records/blocked_handoff.env` so stale, incomplete, or missing aggregate evidence has explicit passive handoff examples.
 
 ## Security
 
@@ -15,6 +16,7 @@
 - Release-gate mode accepts only `pass` and `watch` records with `release_ready=true` and no blocking issues; `degraded` and `blocked` records remain valid handoff evidence but cannot promote a release.
 - `--print-template` prints text only, performs no live checks, and remains non-release-ready until a reviewer fills in evidence and reruns validation.
 - Fixture examples are static local text records only; they contain no raw telemetry, secrets, host identifiers, VM identifiers, packet captures, payloads, or operational commands.
+- The degraded and blocked fixtures intentionally fail release-gate mode while passing normal passive validation, preserving conservative reviewer handoff without authorizing promotion.
 
 ## Validation
 
