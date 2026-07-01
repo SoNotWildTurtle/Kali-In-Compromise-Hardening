@@ -6,7 +6,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: nn_ids_triage_record_validate.sh [--release-gate] <triage-record>
+Usage: nn_ids_triage_record_validate.sh [--release-gate] [--emit-json] <triage-record>
        nn_ids_triage_record_validate.sh --print-template
 
 Validates a passive aggregate-only NN IDS triage record written as stable key=value
@@ -15,7 +15,9 @@ supported decisions. With --release-gate, only pass/watch records with safe rele
 handoff metadata are accepted for promotion evidence.
 
 Use --print-template to write a conservative key=value template to stdout for
-reviewers who need a reproducible starting point.
+reviewers who need a reproducible starting point. Use --emit-json to write the
+validated record as schema-compatible JSON for release receipts or handoff
+bundles.
 
 This tool is intentionally passive. It reads one local text file and does not run
 live IDS checks, inspect packets, mutate services, change firewall policy, retrain
@@ -43,7 +45,39 @@ owner=release-reviewer
 EOF
 }
 
+json_escape() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\t'/\\t}"
+  value="${value//$'\r'/\\r}"
+  value="${value//$'\n'/\\n}"
+  printf '%s' "$value"
+}
+
+emit_json_record() {
+  local key
+  local value
+  local comma=""
+  printf '{\n'
+  for key in "${required_keys[@]}"; do
+    printf '%s  "%s": ' "$comma" "$key"
+    case "$key" in
+      release_ready|human_review_required|live_action_authorized)
+        printf '%s' "${fields[$key]}"
+        ;;
+      *)
+        value="$(json_escape "${fields[$key]}")"
+        printf '"%s"' "$value"
+        ;;
+    esac
+    comma=',\n'
+  done
+  printf '\n}\n'
+}
+
 release_gate=false
+emit_json=false
 record_path=""
 
 while [[ $# -gt 0 ]]; do
@@ -52,9 +86,13 @@ while [[ $# -gt 0 ]]; do
       release_gate=true
       shift
       ;;
+    --emit-json)
+      emit_json=true
+      shift
+      ;;
     --print-template)
-      if [[ "$release_gate" == true || -n "$record_path" || $# -ne 1 ]]; then
-        printf '[triage-record-validator][FAIL] --print-template cannot be combined with --release-gate, a record path, or other options\n' >&2
+      if [[ "$release_gate" == true || "$emit_json" == true || -n "$record_path" || $# -ne 1 ]]; then
+        printf '[triage-record-validator][FAIL] --print-template cannot be combined with --release-gate, --emit-json, a record path, or other options\n' >&2
         usage >&2
         exit 2
       fi
@@ -192,6 +230,11 @@ fi
 
 if [[ "$failures" -ne 0 ]]; then
   exit 1
+fi
+
+if [[ "$emit_json" == true ]]; then
+  emit_json_record
+  exit 0
 fi
 
 printf '[triage-record-validator] %s accepted for passive validation' "$record_path"
