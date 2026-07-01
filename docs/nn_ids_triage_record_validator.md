@@ -53,6 +53,8 @@ Reusable fixture records live under `examples/nn_ids_triage_records/` so reviewe
 
 - `examples/nn_ids_triage_records/pass_release_ready.env` demonstrates a release-ready aggregate record that passes normal validation and release-gate mode.
 - `examples/nn_ids_triage_records/watch_handoff.env` demonstrates a conservative handoff record that passes normal validation but intentionally fails release-gate mode until a reviewer marks it release-ready.
+- `examples/nn_ids_triage_records/degraded_handoff.env` demonstrates stale or incomplete aggregate evidence that is valid passive handoff evidence but is not release-ready.
+- `examples/nn_ids_triage_records/blocked_handoff.env` demonstrates missing required aggregate release evidence that must remain blocked until reviewers provide replacement artifacts.
 
 Validate the fixtures before copying them into release notes or handoff bundles:
 
@@ -82,7 +84,7 @@ Triage records are evidence, not authority. They help reviewers make conservativ
 
 `--print-template` improves usability without increasing authority: it only prints local text, keeps the default record non-release-ready, and preserves the same passive aggregate-only constraints validated by normal mode.
 
-Fixture examples improve reproducibility without increasing authority: they are static local text records, contain no secrets or raw telemetry, and are validated by the same passive script before they are used as review evidence.
+Fixture examples improve reproducibility without increasing authority: they are static local text records, contain no secrets or raw telemetry, and are validated by the same passive script before they are used as review evidence. Degraded and blocked fixtures make failure-mode handoff records explicit while preserving fail-closed release-gate behavior.
 
 ## Compatibility impact
 
@@ -96,4 +98,4 @@ Rollback is a normal revert of the validator, this document, the changelog fragm
 
 - Wire accepted triage records into release receipts and posture bundle manifests.
 - Add JSON-schema parity after the key/value record contract stabilizes.
-- Add fixture coverage for degraded and blocked records once the repository standardizes blocker taxonomy names.
+- Add machine-readable examples for external release handoff bundles once manifest embedding is standardized.
