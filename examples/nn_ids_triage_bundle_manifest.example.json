@@ -1,0 +1,42 @@
+{
+  "blocking_record_count": 0,
+  "decision_counts": {
+    "blocked": 0,
+    "degraded": 0,
+    "pass": 1,
+    "watch": 1
+  },
+  "generated_at": "2026-07-01T20:00:00+00:00",
+  "human_review_required": true,
+  "live_action_authorized": false,
+  "manifest_type": "nn_ids_triage_bundle_manifest",
+  "next_evidence_needed": [
+    "review CI evidence before any promotion decision",
+    "collect fresh drift summary before reviewer handoff"
+  ],
+  "overall_status": "review-required",
+  "privacy_scope": "aggregate-only; no raw telemetry or secrets",
+  "record_count": 2,
+  "records": [
+    {
+      "blocking_issues": "none",
+      "next_evidence_needed": "review CI evidence before any promotion decision",
+      "owner": "release-reviewer",
+      "path": "examples/nn_ids_triage_records/pass.review.json",
+      "release_ready": true,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "triage_decision": "pass"
+    },
+    {
+      "blocking_issues": "none; freshness review still pending",
+      "next_evidence_needed": "collect fresh drift summary before reviewer handoff",
+      "owner": "ids-maintainer",
+      "path": "examples/nn_ids_triage_records/watch.review.json",
+      "release_ready": false,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "triage_decision": "watch"
+    }
+  ],
+  "release_ready_count": 1,
+  "schema_version": 1
+}
