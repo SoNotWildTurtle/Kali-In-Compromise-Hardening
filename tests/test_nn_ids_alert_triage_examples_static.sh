@@ -8,21 +8,41 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOC="$ROOT_DIR/docs/nn_ids_alert_triage_examples.md"
 CHANGELOG="$ROOT_DIR/changelog.d/nn_ids_alert_triage_examples.md"
 
-[[ -f "$DOC" ]]
-[[ -f "$CHANGELOG" ]]
+require_file() {
+  local path="$1"
+  if [[ ! -f "$path" ]]; then
+    printf '[triage-examples-static][FAIL] missing required file: %s\n' "$path" >&2
+    exit 1
+  fi
+}
+
+require_contains() {
+  local path="$1"
+  local token="$2"
+  if ! grep -Fq -- "$token" "$path"; then
+    printf '[triage-examples-static][FAIL] %s missing required token: %s\n' "$path" "$token" >&2
+    exit 1
+  fi
+}
+
+require_file "$DOC"
+require_file "$CHANGELOG"
 
 # The examples must preserve the passive, aggregate-only safety boundary.
-grep -q "aggregate-only evidence" "$DOC"
-grep -q "analytical estimates, not certainty" "$DOC"
-grep -q "human_review_required=true" "$DOC"
-grep -q "live_action_authorized=false" "$DOC"
-grep -q "no remediation, restore, retrain, firewall, service, or hypervisor action" "$DOC"
-grep -q "no raw telemetry or secrets" "$DOC"
+for token in \
+  "aggregate-only evidence" \
+  "analytical estimates, not certainty" \
+  "human_review_required=true" \
+  "live_action_authorized=false" \
+  "no remediation, restore, retrain, firewall, service, or hypervisor action" \
+  "no raw telemetry or secrets"; do
+  require_contains "$DOC" "$token"
+done
 
 # Each supported triage decision should have a concrete synthetic record.
 for decision in pass watch degraded blocked; do
-  grep -q "## Example: $decision" "$DOC"
-  grep -q "triage_decision=$decision" "$DOC"
+  require_contains "$DOC" "## Example: $decision"
+  require_contains "$DOC" "triage_decision=$decision"
 done
 
 # Examples should remain useful for the current NN IDS evidence family and release handoffs.
@@ -34,7 +54,7 @@ for token in \
   "nn_ids_drift_triage.md" \
   "nn_ids_model_card" \
   "nn_ids_posture_bundle_manifest.json"; do
-  grep -q "$token" "$DOC"
+  require_contains "$DOC" "$token"
 done
 
 # Records must keep stable handoff keys that future validators can enforce.
@@ -48,17 +68,25 @@ for token in \
   "rollback_reference=" \
   "next_evidence_needed=" \
   "owner="; do
-  grep -q "$token" "$DOC"
+  require_contains "$DOC" "$token"
 done
 
-grep -q "Fail closed" "$DOC"
-grep -q "Accessibility and handoff notes" "$DOC"
-grep -q "Compatibility and rollback" "$DOC"
-grep -q "documentation-only" "$DOC"
+for token in \
+  "Fail closed" \
+  "Accessibility and handoff notes" \
+  "Compatibility and rollback" \
+  "documentation-only"; do
+  require_contains "$DOC" "$token"
+done
 
 # Changelog fragment must advertise additive documentation and the passive security boundary.
-grep -q "nn_ids_alert_triage_examples.md" "$CHANGELOG"
-grep -q "synthetic" "$CHANGELOG"
-grep -q "documentation-only" "$CHANGELOG"
-grep -q "does not inspect live IDS, host, VM, or hypervisor state" "$CHANGELOG"
-grep -q "bash tests/test_nn_ids_alert_triage_examples_static.sh" "$CHANGELOG"
+for token in \
+  "nn_ids_alert_triage_examples.md" \
+  "synthetic" \
+  "documentation-only" \
+  "does not inspect live IDS, host, VM, or hypervisor state" \
+  "bash tests/test_nn_ids_alert_triage_examples_static.sh"; do
+  require_contains "$CHANGELOG" "$token"
+done
+
+printf '[triage-examples-static] NN IDS alert triage examples static checks passed\n'
