@@ -86,7 +86,7 @@ privacy_scope=aggregate-only; no raw telemetry or secrets
 human_review_required=true
 live_action_authorized=false
 rollback_reference=docs/nn_ids_alert_triage_playbook.md#rollback
-next_evidence_needed=rerun hosted gates and confirm drift freshness
+next_evidence_needed=collect fresh hosted gates and confirm drift freshness
 owner=ids-maintainer
 EOF
 
