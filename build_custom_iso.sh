@@ -148,6 +148,8 @@ core_modules=(
 
 ids_modules=(
     "nn_ids.conf"
+    "nn_ids_triage_record_validate.sh"
+    "nn_ids_triage_bundle_manifest.py"
     "nn_ids_setup.py"
     "setup_nn_ids.sh"
     "setup_nn_ids.service"
