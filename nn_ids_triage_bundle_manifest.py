@@ -6,7 +6,7 @@ MINC - Defensive release evidence helper only.
 This tool reads local schema-compatible triage JSON records that were already
 emitted by nn_ids_triage_record_validate.sh --emit-json. It summarizes decision
 counts, release readiness, blockers, source hashes, and follow-up needs for
-reviewer handoff bundles. It never inspects live IDS, host, VM, hypervisor,
+reviewer handoff bundles. It does not inspect live IDS, host, VM, hypervisor,
 packet, payload, firewall, restore, retraining, telemetry, service, or network
 state and never authorizes live action.
 """
