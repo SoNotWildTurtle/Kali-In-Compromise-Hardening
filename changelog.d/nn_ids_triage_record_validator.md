@@ -9,7 +9,7 @@
 ## Security
 
 - The validator reads one local `key=value` record and does not inspect live IDS, host, VM, hypervisor, packet, payload, or telemetry state.
-- The validator keeps `human_review_required=true`, rejects `live_action_authorized=true`, requires aggregate-only privacy wording, requires uncertainty notes, requires rollback references, and treats command-like operational text as unsafe.
+- The validator keeps `human_review_required=true`, requires `live_action_authorized=false`, rejects `live_action_authorized=true`, requires aggregate-only privacy wording, requires uncertainty notes, requires rollback references, and treats command-like operational text as unsafe.
 - Release-gate mode accepts only `pass` and `watch` records with `release_ready=true` and no blocking issues; `degraded` and `blocked` records remain valid handoff evidence but cannot promote a release.
 
 ## Validation
