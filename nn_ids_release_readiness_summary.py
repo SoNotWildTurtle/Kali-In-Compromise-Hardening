@@ -18,6 +18,7 @@ SCHEMA_PATH = "docs/schemas/nn_ids_release_readiness_summary.schema.json"
 STATIC_VALIDATION_COMMANDS = [
     "bash tests/test_nn_ids_release_readiness_summary_static.sh",
     "bash tests/test_nn_ids_release_schema_contract_static.sh",
+    "bash tests/test_nn_ids_release_report_contract_static.sh",
     "bash tests/run_static_security_checks.sh",
 ]
 HOSTED_REQUIRED_CHECKS = [

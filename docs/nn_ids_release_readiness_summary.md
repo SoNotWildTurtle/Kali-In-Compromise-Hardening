@@ -50,6 +50,27 @@ The schema requires the passive safety contract to remain explicit:
 
 It also ties `ids_release_ready` to an empty `blocking_issues` list while blocked artifacts must include at least one blocking issue.
 
+## Report contract
+
+The optional `--report` output is a shell-friendly `key=value` summary for dashboards, release receipts, and operator handoffs that do not need the full JSON artifact. It is written without sourcing shell content and includes only aggregate release evidence:
+
+- `created_utc`
+- `decision`
+- `ids_release_ready`
+- `gate_decision`
+- `blocking_issue_count`
+- `changes_live_state`
+- `reads_raw_telemetry`
+- `aggregate_evidence_only`
+- `schema_path`
+- `safe_to_publish`
+- `contains_raw_telemetry`
+- `contains_secrets`
+- `human_review_required`
+- zero or more `blocking_issue` lines for blocked summaries
+
+`tests/test_nn_ids_release_report_contract_static.sh` validates that the report mirrors the JSON decision fields, preserves passive safety fields, emits no blocking issue lines for ready/watch summaries, and includes blocking issue lines for fail-closed retrain or restore summaries.
+
 ## Dependency-free schema validation
 
 `tests/test_nn_ids_release_schema_contract_static.sh` generates synthetic ready and blocked artifacts and validates the schema contract without installing `jsonschema` or any network dependency. The test checks required top-level fields, constants, enum values, bounded metrics, manifest commands, hosted check names, ready/blocking semantics, and fail-closed `retrain` behavior.
@@ -64,6 +85,7 @@ Focused validation:
 python3 -m py_compile nn_ids_release_readiness_summary.py
 bash tests/test_nn_ids_release_readiness_summary_static.sh
 bash tests/test_nn_ids_release_schema_contract_static.sh
+bash tests/test_nn_ids_release_report_contract_static.sh
 bash tests/run_static_security_checks.sh
 ```
 
@@ -79,7 +101,7 @@ This is additive and backwards compatible. Existing IDS model audit, audit gate,
 
 ## Rollback
 
-Rollback is a normal revert of the CLI manifest command, schema contract static test, documentation, and changelog. No host, VM, package, service, firewall, hypervisor, IDS dataset, model, secret, or telemetry state requires rollback.
+Rollback is a normal revert of the CLI manifest command, report contract static test, documentation, and changelog. No host, VM, package, service, firewall, hypervisor, IDS dataset, model, secret, or telemetry state requires rollback.
 
 ## Follow-up
 
