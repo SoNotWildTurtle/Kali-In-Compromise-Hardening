@@ -53,8 +53,8 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --print-template)
-      if [[ -n "$record_path" || $# -ne 1 ]]; then
-        printf '[triage-record-validator][FAIL] --print-template cannot be combined with a record path or other options\n' >&2
+      if [[ "$release_gate" == true || -n "$record_path" || $# -ne 1 ]]; then
+        printf '[triage-record-validator][FAIL] --print-template cannot be combined with --release-gate, a record path, or other options\n' >&2
         usage >&2
         exit 2
       fi
