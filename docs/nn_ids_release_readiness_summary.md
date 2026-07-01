@@ -50,6 +50,12 @@ The schema requires the passive safety contract to remain explicit:
 
 It also ties `ids_release_ready` to an empty `blocking_issues` list while blocked artifacts must include at least one blocking issue.
 
+## Dependency-free schema validation
+
+`tests/test_nn_ids_release_schema_contract_static.sh` generates synthetic ready and blocked artifacts and validates the schema contract without installing `jsonschema` or any network dependency. The test checks required top-level fields, constants, enum values, bounded metrics, manifest commands, hosted check names, ready/blocking semantics, and fail-closed `retrain` behavior.
+
+This complements the focused behavior test. It is intentionally static and synthetic: it does not inspect live IDS state, raw packets, datasets, models, host state, VM state, secrets, or telemetry.
+
 ## Validation
 
 Focused validation:
@@ -57,6 +63,7 @@ Focused validation:
 ```bash
 python3 -m py_compile nn_ids_release_readiness_summary.py
 bash tests/test_nn_ids_release_readiness_summary_static.sh
+bash tests/test_nn_ids_release_schema_contract_static.sh
 bash tests/run_static_security_checks.sh
 ```
 
@@ -72,10 +79,10 @@ This is additive and backwards compatible. Existing IDS model audit, audit gate,
 
 ## Rollback
 
-Rollback is a normal revert of the CLI, schema, static test, documentation, README entry, and changelog. No host, VM, package, service, firewall, hypervisor, IDS dataset, model, secret, or telemetry state requires rollback.
+Rollback is a normal revert of the CLI manifest command, schema contract static test, documentation, and changelog. No host, VM, package, service, firewall, hypervisor, IDS dataset, model, secret, or telemetry state requires rollback.
 
 ## Follow-up
 
-- Wire IDS release readiness into the aggregate host/VM release posture once hosted workflows publish firstboot, restore, and IDS artifacts in a shared workspace.
+- Wire IDS release readiness into the aggregate host/VM release posture once firstboot and restore artifacts share a hosted workspace.
 - Add hosted JSON Schema validation once the repository adopts a reusable validator.
 - Extend IDS audit evidence with calibrated confidence intervals and dataset provenance hashes.
