@@ -104,6 +104,9 @@ fi
 if bash "$VALIDATOR" --print-template "$TMP_DIR/pass.env" >/dev/null 2>&1; then
   fail '--print-template must not accept extra record paths'
 fi
+if bash "$VALIDATOR" --release-gate --print-template >/dev/null 2>&1; then
+  fail '--print-template must not combine with --release-gate'
+fi
 
 cat > "$TMP_DIR/degraded.env" <<'EOF'
 triage_decision=degraded
