@@ -98,7 +98,7 @@ for token in required_order:
 if all(pos >= 0 for pos in positions) and positions != sorted(positions):
     errors.append('firstboot.sh should run model audit, audit gate, policy attestation, then policy verification')
 
-# Critical guardrails added by recent runs should remain packaged.
+# Critical guardrails added by recent runs should remain present and covered.
 for token in [
     'host_vm_comm_guard.sh',
     'host_vm_comm_guard.service',
@@ -117,10 +117,17 @@ for token in [
     'nn_ids_audit_gate.py',
     'nn_ids_audit_gate.service',
     'nn_ids_audit_gate.timer',
+    'nn_ids_triage_record_validate.sh',
+    'tests/test_nn_ids_triage_record_validator_static.sh',
+    'docs/nn_ids_triage_record_validator.md',
+    'changelog.d/nn_ids_triage_record_validator.md',
 ]:
-    if token.startswith('tests/'):
+    if token.startswith('tests/') or token.startswith('docs/') or token.startswith('changelog.d/'):
         if not (root / token).exists():
-            errors.append(f'missing critical module test {token}')
+            errors.append(f'missing critical evidence file {token}')
+    elif token.endswith('.sh') and token == 'nn_ids_triage_record_validate.sh':
+        if not (root / token).exists():
+            errors.append(f'missing critical passive validator {token}')
     elif f'"{token}"' not in build and f"'{token}'" not in build:
         errors.append(f'build_custom_iso.sh missing critical module {token}')
 
