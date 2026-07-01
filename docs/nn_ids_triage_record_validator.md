@@ -31,6 +31,14 @@ Validate record shape and passive safety boundaries:
 bash nn_ids_triage_record_validate.sh path/to/triage-record.env
 ```
 
+Print a conservative passive starter record for reviewers:
+
+```bash
+bash nn_ids_triage_record_validate.sh --print-template > triage-record.env
+```
+
+The printed template defaults to `triage_decision=watch` and `release_ready=false` so it is valid handoff evidence but cannot pass release-gate mode until a reviewer replaces placeholders, confirms aggregate evidence freshness, and intentionally marks the record release-ready.
+
 Validate that the record is acceptable as release-gate evidence:
 
 ```bash
@@ -58,6 +66,8 @@ The validator fails closed when a record:
 ## Threat-model rationale
 
 Triage records are evidence, not authority. They help reviewers make conservative decisions while keeping live-state changes in separate reviewed workflows. The validator enforces that boundary by requiring human review, rejecting live authorization, and treating operational command text as unsafe.
+
+`--print-template` improves usability without increasing authority: it only prints local text, keeps the default record non-release-ready, and preserves the same passive aggregate-only constraints validated by normal mode.
 
 ## Compatibility impact
 
