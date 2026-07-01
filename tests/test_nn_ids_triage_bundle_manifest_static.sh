@@ -9,6 +9,7 @@ VALIDATOR="$ROOT_DIR/nn_ids_triage_record_validate.sh"
 MANIFEST_HELPER="$ROOT_DIR/nn_ids_triage_bundle_manifest.py"
 DOC="$ROOT_DIR/docs/nn_ids_triage_record_validator.md"
 CHANGELOG="$ROOT_DIR/changelog.d/nn_ids_triage_record_validator.md"
+EXAMPLE="$ROOT_DIR/examples/nn_ids_triage_bundle_manifest.example.json"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -27,6 +28,7 @@ require_token() {
 [[ -f "$MANIFEST_HELPER" ]] || fail "missing manifest helper: $MANIFEST_HELPER"
 [[ -f "$DOC" ]] || fail "missing documentation: $DOC"
 [[ -f "$CHANGELOG" ]] || fail "missing changelog: $CHANGELOG"
+[[ -f "$EXAMPLE" ]] || fail "missing example manifest: $EXAMPLE"
 
 python3 -m py_compile "$MANIFEST_HELPER" || fail 'manifest helper has invalid Python syntax'
 
@@ -58,6 +60,15 @@ for token in \
   'aggregate-only' \
   'tests/test_nn_ids_triage_bundle_manifest_static.sh'; do
   require_token "$CHANGELOG" "$token"
+done
+
+for token in \
+  'nn_ids_triage_bundle_manifest' \
+  'review-required' \
+  'human_review_required' \
+  'live_action_authorized' \
+  'aggregate-only; no raw telemetry or secrets'; do
+  require_token "$EXAMPLE" "$token"
 done
 
 cat > "$TMP_DIR/pass.env" <<'EOF'
@@ -95,11 +106,12 @@ bash "$VALIDATOR" --emit-json "$TMP_DIR/watch.env" > "$TMP_DIR/watch.json" || fa
 
 python3 "$MANIFEST_HELPER" --generated-at '2026-07-01T20:00:00+00:00' "$TMP_DIR/pass.json" "$TMP_DIR/watch.json" > "$TMP_DIR/manifest.json" || fail 'manifest helper should aggregate valid triage JSON records'
 
-python3 - "$TMP_DIR/manifest.json" <<'PY' || fail 'manifest should preserve passive release handoff boundaries'
+python3 - "$TMP_DIR/manifest.json" "$EXAMPLE" <<'PY' || fail 'manifest should preserve passive release handoff boundaries'
 import json
 import pathlib
 import sys
 manifest = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+example = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding='utf-8'))
 assert manifest['manifest_type'] == 'nn_ids_triage_bundle_manifest'
 assert manifest['schema_version'] == 1
 assert manifest['generated_at'] == '2026-07-01T20:00:00+00:00'
@@ -118,6 +130,14 @@ assert len(manifest['records']) == 2
 assert all('sha256' in record and len(record['sha256']) == 64 for record in manifest['records'])
 assert manifest['records'][0]['triage_decision'] == 'pass'
 assert manifest['records'][1]['triage_decision'] == 'watch'
+assert example['manifest_type'] == manifest['manifest_type']
+assert example['schema_version'] == manifest['schema_version']
+assert example['overall_status'] == 'review-required'
+assert example['human_review_required'] is True
+assert example['live_action_authorized'] is False
+assert example['privacy_scope'] == 'aggregate-only; no raw telemetry or secrets'
+assert example['record_count'] == len(example['records'])
+assert all(len(record['sha256']) == 64 for record in example['records'])
 PY
 
 cat > "$TMP_DIR/unsafe.json" <<'EOF'
