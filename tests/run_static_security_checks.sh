@@ -119,10 +119,12 @@ for token in [
     'nn_ids_audit_gate.timer',
     'nn_ids_triage_record_validate.sh',
     'tests/test_nn_ids_triage_record_validator_static.sh',
+    'tests/test_nn_ids_triage_record_schema_static.sh',
     'docs/nn_ids_triage_record_validator.md',
+    'schemas/nn_ids_triage_record.schema.json',
     'changelog.d/nn_ids_triage_record_validator.md',
 ]:
-    if token.startswith('tests/') or token.startswith('docs/') or token.startswith('changelog.d/'):
+    if token.startswith('tests/') or token.startswith('docs/') or token.startswith('schemas/') or token.startswith('changelog.d/'):
         if not (root / token).exists():
             errors.append(f'missing critical evidence file {token}')
     elif token.endswith('.sh') and token == 'nn_ids_triage_record_validate.sh':

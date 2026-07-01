@@ -23,6 +23,25 @@ next_evidence_needed=<freshness recheck, model card, drift review, or hosted gat
 owner=<review role or team>
 ```
 
+## Machine-readable schema
+
+`schemas/nn_ids_triage_record.schema.json` mirrors the shell validator contract as a dependency-free JSON schema artifact for release bundles, handoff manifests, and external reviewers that need a stable machine-readable contract.
+
+The schema intentionally preserves the same conservative boundaries as the shell validator:
+
+- `triage_decision` is limited to `pass`, `watch`, `degraded`, or `blocked`.
+- `human_review_required` is always `true`.
+- `live_action_authorized` is always `false`.
+- `privacy_scope` must include `aggregate-only; no raw telemetry or secrets`.
+- additional properties are rejected so raw telemetry, packet captures, payloads, secrets, host identifiers, and VM identifiers cannot be smuggled into a triage handoff.
+- `release_gate_contract` documents that only release-ready `pass` or `watch` records with no blockers can promote a release; `degraded` and `blocked` remain valid handoff evidence only.
+
+Validate schema parity with the shell validator and fixtures:
+
+```bash
+bash tests/test_nn_ids_triage_record_schema_static.sh
+```
+
 ## Usage
 
 Validate record shape and passive safety boundaries:
@@ -86,16 +105,18 @@ Triage records are evidence, not authority. They help reviewers make conservativ
 
 Fixture examples improve reproducibility without increasing authority: they are static local text records, contain no secrets or raw telemetry, and are validated by the same passive script before they are used as review evidence. Degraded and blocked fixtures make failure-mode handoff records explicit while preserving fail-closed release-gate behavior.
 
+The JSON schema improves handoff automation without increasing authority: it is a static machine-readable contract for aggregate review records, contains no runtime hooks, and is checked against the shell validator plus fixtures by `tests/test_nn_ids_triage_record_schema_static.sh`.
+
 ## Compatibility impact
 
 This is additive and backwards compatible. Existing NN IDS release readiness, model-card, drift, health, posture bundle, firstboot, restore, service, timer, schema, and host/VM policy workflows remain unchanged.
 
 ## Rollback
 
-Rollback is a normal revert of the validator, this document, the changelog fragment, static tests, and fixture examples. No host, VM, service, firewall, IDS model, dataset, telemetry, secret, package, hypervisor, firstboot, restore, or runtime state requires rollback.
+Rollback is a normal revert of the validator, schema, this document, the changelog fragment, static tests, and fixture examples. No host, VM, service, firewall, IDS model, dataset, telemetry, secret, package, hypervisor, firstboot, restore, or runtime state requires rollback.
 
 ## Follow-up work
 
 - Wire accepted triage records into release receipts and posture bundle manifests.
-- Add JSON-schema parity after the key/value record contract stabilizes.
+- Add JSON export for validated key/value triage records so release tooling can emit schema-compatible bundles directly.
 - Add machine-readable examples for external release handoff bundles once manifest embedding is standardized.
