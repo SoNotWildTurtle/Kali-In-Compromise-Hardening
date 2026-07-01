@@ -8,6 +8,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VALIDATOR="$ROOT_DIR/nn_ids_triage_record_validate.sh"
 PASS_FIXTURE="$ROOT_DIR/examples/nn_ids_triage_records/pass_release_ready.env"
 WATCH_FIXTURE="$ROOT_DIR/examples/nn_ids_triage_records/watch_handoff.env"
+DEGRADED_FIXTURE="$ROOT_DIR/examples/nn_ids_triage_records/degraded_handoff.env"
+BLOCKED_FIXTURE="$ROOT_DIR/examples/nn_ids_triage_records/blocked_handoff.env"
 DOC="$ROOT_DIR/docs/nn_ids_triage_record_validator.md"
 CHANGELOG="$ROOT_DIR/changelog.d/nn_ids_triage_record_validator.md"
 
@@ -22,11 +24,11 @@ require_token() {
   grep -Fq -- "$token" "$file" || fail "$file missing required token: $token"
 }
 
-for file in "$VALIDATOR" "$PASS_FIXTURE" "$WATCH_FIXTURE" "$DOC" "$CHANGELOG"; do
+for file in "$VALIDATOR" "$PASS_FIXTURE" "$WATCH_FIXTURE" "$DEGRADED_FIXTURE" "$BLOCKED_FIXTURE" "$DOC" "$CHANGELOG"; do
   [[ -f "$file" ]] || fail "missing required file: $file"
 done
 
-for fixture in "$PASS_FIXTURE" "$WATCH_FIXTURE"; do
+for fixture in "$PASS_FIXTURE" "$WATCH_FIXTURE" "$DEGRADED_FIXTURE" "$BLOCKED_FIXTURE"; do
   require_token "$fixture" 'aggregate-only; no raw telemetry or secrets'
   require_token "$fixture" 'human_review_required=true'
   require_token "$fixture" 'live_action_authorized=false'
@@ -36,13 +38,17 @@ for fixture in "$PASS_FIXTURE" "$WATCH_FIXTURE"; do
 done
 
 bash "$VALIDATOR" --release-gate "$PASS_FIXTURE" >/dev/null || fail 'release-ready pass fixture should pass release-gate mode'
-if bash "$VALIDATOR" --release-gate "$WATCH_FIXTURE" >/dev/null 2>&1; then
-  fail 'watch fixture must not pass release-gate mode until reviewer marks release_ready=true'
-fi
+for fixture in "$WATCH_FIXTURE" "$DEGRADED_FIXTURE" "$BLOCKED_FIXTURE"; do
+  if bash "$VALIDATOR" --release-gate "$fixture" >/dev/null 2>&1; then
+    fail "non-release-ready fixture must not pass release-gate mode: $fixture"
+  fi
+done
 
 for token in \
   'examples/nn_ids_triage_records/pass_release_ready.env' \
   'examples/nn_ids_triage_records/watch_handoff.env' \
+  'examples/nn_ids_triage_records/degraded_handoff.env' \
+  'examples/nn_ids_triage_records/blocked_handoff.env' \
   'fixture'; do
   require_token "$DOC" "$token"
   require_token "$CHANGELOG" "$token"
