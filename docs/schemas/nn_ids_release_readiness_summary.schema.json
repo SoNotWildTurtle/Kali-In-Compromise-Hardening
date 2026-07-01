@@ -1,0 +1,131 @@
+{
+  "title": "NN IDS Release Readiness Summary",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "summary",
+    "summary_version",
+    "created_utc",
+    "decision",
+    "ids_release_ready",
+    "changes_live_state",
+    "reads_raw_telemetry",
+    "aggregate_evidence_only",
+    "model_audit",
+    "audit_gate",
+    "blocking_issues",
+    "reviewer_handoff",
+    "evidence_manifest",
+    "rollback",
+    "follow_up"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "summary": {"const": "nn_ids_release_readiness_summary.py"},
+    "decision": {"enum": ["ids_release_ready", "ids_release_blocked"]},
+    "ids_release_ready": {"type": "boolean"},
+    "changes_live_state": {"const": false},
+    "reads_raw_telemetry": {"const": false},
+    "aggregate_evidence_only": {"const": true},
+    "model_audit": {
+      "type": "object",
+      "required": ["path", "message", "rows", "feature_count", "accuracy", "balanced_accuracy", "precision", "recall", "f1", "robustness_index", "shifted_feature_count"],
+      "properties": {
+        "message": {"const": "nn_ids_model_audit_complete"},
+        "rows": {"type": "integer", "minimum": 1},
+        "feature_count": {"type": "integer", "minimum": 1},
+        "accuracy": {"type": "number", "minimum": 0, "maximum": 1},
+        "balanced_accuracy": {"type": "number", "minimum": 0, "maximum": 1},
+        "precision": {"type": "number", "minimum": 0, "maximum": 1},
+        "recall": {"type": "number", "minimum": 0, "maximum": 1},
+        "f1": {"type": "number", "minimum": 0, "maximum": 1},
+        "robustness_index": {"type": "number", "minimum": 0, "maximum": 1},
+        "shifted_feature_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "audit_gate": {
+      "type": "object",
+      "required": ["path", "message", "decision", "finding_count", "auto_actions"],
+      "properties": {
+        "message": {"const": "nn_ids_audit_gate_complete"},
+        "decision": {"enum": ["accept", "watch", "retrain", "restore"]},
+        "finding_count": {"type": "integer", "minimum": 0},
+        "auto_actions": {"const": false}
+      }
+    },
+    "blocking_issues": {"type": "array", "items": {"type": "string"}},
+    "reviewer_handoff": {
+      "type": "object",
+      "required": [
+        "confirm_model_audit_complete",
+        "confirm_gate_complete",
+        "acceptable_gate_decisions",
+        "remediation_gate_decisions",
+        "confirm_no_live_state_change",
+        "confirm_no_raw_telemetry",
+        "requires_human_review_before_release_promotion"
+      ],
+      "properties": {
+        "confirm_model_audit_complete": {"const": "nn_ids_model_audit_complete"},
+        "confirm_gate_complete": {"const": "nn_ids_audit_gate_complete"},
+        "acceptable_gate_decisions": {"type": "array", "contains": {"const": "accept"}},
+        "remediation_gate_decisions": {"type": "array", "contains": {"const": "restore"}},
+        "confirm_no_live_state_change": {"const": true},
+        "confirm_no_raw_telemetry": {"const": true},
+        "requires_human_review_before_release_promotion": {"const": true}
+      }
+    },
+    "evidence_manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_path",
+        "static_validation_commands",
+        "hosted_required_checks",
+        "safe_to_publish",
+        "contains_raw_telemetry",
+        "contains_secrets",
+        "live_state_validation_required",
+        "human_review_required"
+      ],
+      "properties": {
+        "schema_path": {"const": "docs/schemas/nn_ids_release_readiness_summary.schema.json"},
+        "static_validation_commands": {"type": "array", "minItems": 2, "items": {"type": "string", "minLength": 1}},
+        "hosted_required_checks": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "safe_to_publish": {"const": true},
+        "contains_raw_telemetry": {"const": false},
+        "contains_secrets": {"const": false},
+        "live_state_validation_required": {"const": false},
+        "human_review_required": {"const": true}
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "required": ["live_state_rollback_required", "action"],
+      "properties": {
+        "live_state_rollback_required": {"const": false}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"decision": {"const": "ids_release_ready"}}},
+      "then": {
+        "properties": {
+          "ids_release_ready": {"const": true},
+          "blocking_issues": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"decision": {"const": "ids_release_blocked"}}},
+      "then": {
+        "properties": {
+          "ids_release_ready": {"const": false},
+          "blocking_issues": {"minItems": 1}
+        }
+      }
+    }
+  ]
+}
