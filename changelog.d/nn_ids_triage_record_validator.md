@@ -10,6 +10,7 @@
 - Added degraded and blocked fixture records in `examples/nn_ids_triage_records/degraded_handoff.env` and `examples/nn_ids_triage_records/blocked_handoff.env` so stale, incomplete, or missing aggregate evidence has explicit passive handoff examples.
 - Added `schemas/nn_ids_triage_record.schema.json`, a machine-readable JSON schema for passive NN IDS triage records and release handoff bundles.
 - Added `tests/test_nn_ids_triage_record_schema_static.sh` to verify schema JSON parsing, required-key parity with the shell validator, fixture parity, `release_gate_contract` coverage, and conservative safety tokens.
+- Added `--emit-json` so validated key/value triage records can be exported as schema-compatible JSON for release receipts, posture bundle manifests, and reviewer handoff tooling.
 
 ## Security
 
@@ -20,10 +21,12 @@
 - Fixture examples are static local text records only; they contain no raw telemetry, secrets, host identifiers, VM identifiers, packet captures, payloads, or operational commands.
 - The degraded and blocked fixtures intentionally fail release-gate mode while passing normal passive validation, preserving conservative reviewer handoff without authorizing promotion.
 - The JSON schema is static documentation and validation evidence only. It adds no runtime mutation, no credential access, no live-state inspection, and no authority to execute IDS, host, VM, hypervisor, firewall, restore, retraining, or response actions.
+- `--emit-json` runs after the same fail-closed validation path, emits only the stable schema keys, keeps booleans typed, and does not add live-state authority, raw telemetry, secrets, host identifiers, VM identifiers, packet captures, payloads, or operational commands.
 
 ## Validation
 
 - Added focused validation command: `bash tests/test_nn_ids_triage_record_validator_static.sh`.
 - Added fixture validation command: `bash tests/test_nn_ids_triage_fixtures_static.sh`.
 - Added schema validation command: `bash tests/test_nn_ids_triage_record_schema_static.sh`.
+- JSON export behavior is covered by `bash tests/test_nn_ids_triage_record_validator_static.sh`.
 - Repo-wide validation remains: `bash tests/run_static_security_checks.sh`.
