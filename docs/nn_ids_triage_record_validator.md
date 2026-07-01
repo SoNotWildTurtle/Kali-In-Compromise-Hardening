@@ -66,6 +66,20 @@ bash nn_ids_triage_record_validate.sh --release-gate path/to/triage-record.env
 
 Release-gate mode accepts only `pass` and `watch` decisions with `release_ready=true`, no blocking issues, aggregate-only privacy scope, human review still required, and `live_action_authorized=false`. It rejects `degraded` and `blocked` records so they can be used as handoff evidence but not as promotion evidence.
 
+Export a validated record as schema-compatible JSON for release receipts, posture bundle manifests, or reviewer handoff tooling:
+
+```bash
+bash nn_ids_triage_record_validate.sh --emit-json path/to/triage-record.env > triage-record.json
+```
+
+`--emit-json` always runs the same validation before printing JSON. It emits only the stable schema keys, keeps booleans typed as JSON booleans, and does not add live-state metadata. It can be combined with `--release-gate` when reviewers need JSON evidence that has already passed release-gate checks:
+
+```bash
+bash nn_ids_triage_record_validate.sh --release-gate --emit-json path/to/triage-record.env > triage-record.release-gate.json
+```
+
+If validation fails, `--emit-json` prints no JSON and exits non-zero; it must not be used to bypass degraded, blocked, malformed, or unsafe records.
+
 ## Fixture examples
 
 Reusable fixture records live under `examples/nn_ids_triage_records/` so reviewers and tests can share the same conservative record shapes:
@@ -107,16 +121,18 @@ Fixture examples improve reproducibility without increasing authority: they are 
 
 The JSON schema improves handoff automation without increasing authority: it is a static machine-readable contract for aggregate review records, contains no runtime hooks, and is checked against the shell validator plus fixtures by `tests/test_nn_ids_triage_record_schema_static.sh`.
 
+`--emit-json` improves handoff ergonomics without increasing authority: it reads the same local record, preserves the same fail-closed checks, emits schema-compatible evidence only after validation succeeds, and does not inspect live IDS, host, VM, hypervisor, packet, payload, firewall, restore, retraining, or telemetry state.
+
 ## Compatibility impact
 
-This is additive and backwards compatible. Existing NN IDS release readiness, model-card, drift, health, posture bundle, firstboot, restore, service, timer, schema, and host/VM policy workflows remain unchanged.
+This is additive and backwards compatible. Existing key/value validation, release-gate behavior, fixture records, NN IDS release readiness, model-card, drift, health, posture bundle, firstboot, restore, service, timer, schema, and host/VM policy workflows remain unchanged.
 
 ## Rollback
 
-Rollback is a normal revert of the validator, schema, this document, the changelog fragment, static tests, and fixture examples. No host, VM, service, firewall, IDS model, dataset, telemetry, secret, package, hypervisor, firstboot, restore, or runtime state requires rollback.
+Rollback is a normal revert of the validator JSON export path, schema, this document, the changelog fragment, static tests, and fixture examples. No host, VM, service, firewall, IDS model, dataset, telemetry, secret, package, hypervisor, firstboot, restore, or runtime state requires rollback.
 
 ## Follow-up work
 
-- Wire accepted triage records into release receipts and posture bundle manifests.
-- Add JSON export for validated key/value triage records so release tooling can emit schema-compatible bundles directly.
+- Wire accepted JSON triage records into release receipts and posture bundle manifests.
 - Add machine-readable examples for external release handoff bundles once manifest embedding is standardized.
+- Add optional schema validation for emitted JSON in environments where a JSON Schema validator is already available.

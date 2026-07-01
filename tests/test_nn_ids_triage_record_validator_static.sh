@@ -29,9 +29,12 @@ require_token() {
 }
 
 for token in \
-  'Usage: nn_ids_triage_record_validate.sh [--release-gate] <triage-record>' \
+  'Usage: nn_ids_triage_record_validate.sh [--release-gate] [--emit-json] <triage-record>' \
   'nn_ids_triage_record_validate.sh --print-template' \
   'print_template()' \
+  'json_escape()' \
+  'emit_json_record()' \
+  '--emit-json' \
   'triage_decision' \
   'release_ready' \
   'source_artifacts' \
@@ -53,7 +56,9 @@ done
 for token in \
   'NN IDS Triage Record Validator' \
   '--print-template' \
+  '--emit-json' \
   '--release-gate' \
+  'schema-compatible JSON' \
   'Release-gate mode accepts only `pass` and `watch`' \
   'Triage records are evidence, not authority' \
   'Compatibility impact' \
@@ -69,6 +74,7 @@ for token in \
   'aggregate-only' \
   'live_action_authorized=false' \
   '--print-template' \
+  '--emit-json' \
   'bash tests/test_nn_ids_triage_record_validator_static.sh'; do
   require_token "$CHANGELOG" "$token"
 done
@@ -90,6 +96,42 @@ EOF
 
 bash "$VALIDATOR" "$TMP_DIR/pass.env" >/dev/null || fail 'valid pass record should be accepted'
 bash "$VALIDATOR" --release-gate "$TMP_DIR/pass.env" >/dev/null || fail 'valid pass record should be accepted by release gate mode'
+bash "$VALIDATOR" --emit-json "$TMP_DIR/pass.env" > "$TMP_DIR/pass.json" || fail '--emit-json should render schema-compatible JSON'
+python3 - "$TMP_DIR/pass.json" <<'PY' || fail '--emit-json output should parse and preserve typed safety fields'
+import json
+import pathlib
+import sys
+record = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert record["triage_decision"] == "pass"
+assert record["release_ready"] is True
+assert record["human_review_required"] is True
+assert record["live_action_authorized"] is False
+assert record["privacy_scope"] == "aggregate-only; no raw telemetry or secrets"
+assert set(record) == {
+    "triage_decision",
+    "release_ready",
+    "source_artifacts",
+    "artifact_hashes",
+    "blocking_issues",
+    "uncertainty_note",
+    "privacy_scope",
+    "human_review_required",
+    "live_action_authorized",
+    "rollback_reference",
+    "next_evidence_needed",
+    "owner",
+}
+PY
+bash "$VALIDATOR" --release-gate --emit-json "$TMP_DIR/pass.env" > "$TMP_DIR/pass.release-gate.json" || fail '--emit-json should combine with release-gate validation for accepted records'
+python3 - "$TMP_DIR/pass.release-gate.json" <<'PY' || fail 'release-gate JSON output should remain parseable'
+import json
+import pathlib
+import sys
+record = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert record["triage_decision"] == "pass"
+assert record["release_ready"] is True
+assert record["live_action_authorized"] is False
+PY
 
 bash "$VALIDATOR" --print-template > "$TMP_DIR/template.env" || fail '--print-template should render a passive template'
 require_token "$TMP_DIR/template.env" 'triage_decision=watch'
@@ -98,6 +140,17 @@ require_token "$TMP_DIR/template.env" 'aggregate-only; no raw telemetry or secre
 require_token "$TMP_DIR/template.env" 'human_review_required=true'
 require_token "$TMP_DIR/template.env" 'live_action_authorized=false'
 bash "$VALIDATOR" "$TMP_DIR/template.env" >/dev/null || fail 'printed template should validate as passive handoff evidence'
+bash "$VALIDATOR" --emit-json "$TMP_DIR/template.env" > "$TMP_DIR/template.json" || fail 'printed template should export to JSON after validation'
+python3 - "$TMP_DIR/template.json" <<'PY' || fail 'template JSON should retain non-release-ready booleans'
+import json
+import pathlib
+import sys
+record = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert record["triage_decision"] == "watch"
+assert record["release_ready"] is False
+assert record["human_review_required"] is True
+assert record["live_action_authorized"] is False
+PY
 if bash "$VALIDATOR" --release-gate "$TMP_DIR/template.env" >/dev/null 2>&1; then
   fail 'printed template must not pass release-gate mode until reviewer marks release_ready=true'
 fi
@@ -106,6 +159,9 @@ if bash "$VALIDATOR" --print-template "$TMP_DIR/pass.env" >/dev/null 2>&1; then
 fi
 if bash "$VALIDATOR" --release-gate --print-template >/dev/null 2>&1; then
   fail '--print-template must not combine with --release-gate'
+fi
+if bash "$VALIDATOR" --emit-json --print-template >/dev/null 2>&1; then
+  fail '--print-template must not combine with --emit-json'
 fi
 
 cat > "$TMP_DIR/degraded.env" <<'EOF'
@@ -124,8 +180,21 @@ owner=model-reviewer
 EOF
 
 bash "$VALIDATOR" "$TMP_DIR/degraded.env" >/dev/null || fail 'degraded record should be valid handoff evidence'
+bash "$VALIDATOR" --emit-json "$TMP_DIR/degraded.env" > "$TMP_DIR/degraded.json" || fail 'degraded handoff evidence should export to JSON after passive validation'
+python3 - "$TMP_DIR/degraded.json" <<'PY' || fail 'degraded JSON should parse as non-release-ready handoff evidence'
+import json
+import pathlib
+import sys
+record = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert record["triage_decision"] == "degraded"
+assert record["release_ready"] is False
+assert record["live_action_authorized"] is False
+PY
 if bash "$VALIDATOR" --release-gate "$TMP_DIR/degraded.env" >/dev/null 2>&1; then
   fail 'release gate mode must reject degraded records'
+fi
+if bash "$VALIDATOR" --release-gate --emit-json "$TMP_DIR/degraded.env" >/dev/null 2>&1; then
+  fail 'release-gate JSON export must not bypass degraded record rejection'
 fi
 
 cat > "$TMP_DIR/unsafe.env" <<'EOF'
@@ -146,6 +215,9 @@ EOF
 if bash "$VALIDATOR" "$TMP_DIR/unsafe.env" >/dev/null 2>&1; then
   fail 'validator must reject live_action_authorized=true'
 fi
+if bash "$VALIDATOR" --emit-json "$TMP_DIR/unsafe.env" >/dev/null 2>&1; then
+  fail '--emit-json must not export unsafe records'
+fi
 
 cat > "$TMP_DIR/malformed.env" <<'EOF'
 triage_decision=watch
@@ -165,6 +237,9 @@ EOF
 
 if bash "$VALIDATOR" "$TMP_DIR/malformed.env" >/dev/null 2>&1; then
   fail 'validator must reject malformed non-empty lines'
+fi
+if bash "$VALIDATOR" --emit-json "$TMP_DIR/malformed.env" >/dev/null 2>&1; then
+  fail '--emit-json must not export malformed records'
 fi
 
 printf '[triage-validator-static] NN IDS triage record validator checks passed\n'
