@@ -17,6 +17,8 @@ grep -q '"changes_live_state": {"const": false}' "$SCHEMA"
 grep -q '"reads_raw_telemetry": {"const": false}' "$SCHEMA"
 grep -q '"aggregate_evidence_only": {"const": true}' "$SCHEMA"
 grep -q '"requires_human_review_before_release_promotion": {"const": true}' "$SCHEMA"
+grep -q '"evidence_manifest"' "$SCHEMA"
+grep -q '"contains_secrets": {"const": false}' "$SCHEMA"
 
 cat > "$TMPDIR/firstboot-summary.json" <<'JSON'
 {
@@ -51,6 +53,7 @@ python3 "$SCRIPT" \
   --firstboot-summary "$TMPDIR/firstboot-summary.json" \
   --restore-summary "$TMPDIR/restore-summary.json" \
   --output "$TMPDIR/posture-ready.json" \
+  --report "$TMPDIR/posture-ready.report" \
   --strict >/dev/null
 
 python3 - "$SCHEMA" "$TMPDIR/posture-ready.json" <<'PY'
@@ -94,8 +97,27 @@ assert handoff['confirm_restore_summary_ready'] == 'restore_summary_ready'
 assert handoff['confirm_no_live_state_change'] is True
 assert handoff['confirm_no_raw_telemetry'] is True
 assert handoff['requires_human_review_before_release_promotion'] is True
+
+manifest = artifact['evidence_manifest']
+manifest_schema = schema['properties']['evidence_manifest']['properties']
+assert manifest['schema_path'] == manifest_schema['schema_path']['const']
+assert len(manifest['static_validation_commands']) >= 3
+assert len(manifest['hosted_required_checks']) >= 2
+assert 'Static Security Checks' in manifest['hosted_required_checks']
+assert 'Restore Executor Release Gate' in manifest['hosted_required_checks']
+assert manifest['safe_to_publish'] is True
+assert manifest['contains_raw_telemetry'] is False
+assert manifest['contains_secrets'] is False
+assert manifest['live_state_validation_required'] is False
+assert manifest['human_review_required'] is True
 assert artifact['rollback']['live_state_rollback_required'] is False
 PY
+
+grep -q '^schema_path=docs/schemas/host_vm_policy_release_posture_summary.schema.json$' "$TMPDIR/posture-ready.report"
+grep -q '^safe_to_publish=true$' "$TMPDIR/posture-ready.report"
+grep -q '^contains_raw_telemetry=false$' "$TMPDIR/posture-ready.report"
+grep -q '^contains_secrets=false$' "$TMPDIR/posture-ready.report"
+grep -q '^human_review_required=true$' "$TMPDIR/posture-ready.report"
 
 python3 - "$TMPDIR/restore-summary.json" <<'PY'
 import json
@@ -130,6 +152,8 @@ assert len(artifact['blocking_issues']) >= 1, artifact
 assert artifact['changes_live_state'] is False, artifact
 assert artifact['reads_raw_telemetry'] is False, artifact
 assert artifact['aggregate_evidence_only'] is True, artifact
+assert artifact['evidence_manifest']['safe_to_publish'] is True, artifact
+assert artifact['evidence_manifest']['contains_secrets'] is False, artifact
 assert any('requires_manual_invocation=true' in issue for issue in artifact['blocking_issues']), artifact
 PY
 

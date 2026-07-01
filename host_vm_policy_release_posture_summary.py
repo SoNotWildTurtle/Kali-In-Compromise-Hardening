@@ -11,9 +11,19 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-POSTURE_VERSION = "1.0.0"
+POSTURE_VERSION = "1.1.0"
 POSTURE_READY = "release_posture_ready"
 POSTURE_BLOCKED = "release_posture_blocked"
+SCHEMA_PATH = "docs/schemas/host_vm_policy_release_posture_summary.schema.json"
+STATIC_VALIDATION_COMMANDS = [
+    "bash tests/test_host_vm_policy_release_posture_summary_static.sh",
+    "bash tests/test_host_vm_policy_release_posture_summary_schema_static.sh",
+    "bash tests/run_static_security_checks.sh",
+]
+HOSTED_REQUIRED_CHECKS = [
+    "Static Security Checks",
+    "Restore Executor Release Gate",
+]
 
 
 def utc_now() -> str:
@@ -79,6 +89,20 @@ def component_record(path: Path, summary: dict[str, Any], label: str) -> dict[st
     }
 
 
+def evidence_manifest() -> dict[str, Any]:
+    """Return static reviewer handoff evidence without probing live host/VM state."""
+    return {
+        "schema_path": SCHEMA_PATH,
+        "static_validation_commands": STATIC_VALIDATION_COMMANDS,
+        "hosted_required_checks": HOSTED_REQUIRED_CHECKS,
+        "safe_to_publish": True,
+        "contains_raw_telemetry": False,
+        "contains_secrets": False,
+        "live_state_validation_required": False,
+        "human_review_required": True,
+    }
+
+
 def build_posture(firstboot_path: Path, restore_path: Path) -> dict[str, Any]:
     firstboot, firstboot_load_issues = load_json(firstboot_path, "firstboot")
     restore, restore_load_issues = load_json(restore_path, "restore")
@@ -114,14 +138,15 @@ def build_posture(firstboot_path: Path, restore_path: Path) -> dict[str, Any]:
             "confirm_no_raw_telemetry": True,
             "requires_human_review_before_release_promotion": True,
         },
+        "evidence_manifest": evidence_manifest(),
         "rollback": {
             "live_state_rollback_required": False,
             "action": "revert posture summary CLI, docs, changelog, and tests only",
         },
         "follow_up": [
             "Add IDS aggregate release summary once IDS evidence exposes matching ready/blocked semantics.",
-            "Publish a JSON Schema contract for this aggregate posture artifact after the field set stabilizes.",
             "Wire this posture summary into hosted release gates after firstboot and restore artifacts are both generated in a shared workflow context.",
+            "Add hosted JSON Schema validation once the repository adopts a reusable validator.",
         ],
     }
 
@@ -142,6 +167,11 @@ def write_outputs(posture: dict[str, Any], output: Optional[Path], report: Optio
             f"changes_live_state={str(posture['changes_live_state']).lower()}",
             f"reads_raw_telemetry={str(posture['reads_raw_telemetry']).lower()}",
             f"aggregate_evidence_only={str(posture['aggregate_evidence_only']).lower()}",
+            f"schema_path={posture['evidence_manifest']['schema_path']}",
+            f"safe_to_publish={str(posture['evidence_manifest']['safe_to_publish']).lower()}",
+            f"contains_raw_telemetry={str(posture['evidence_manifest']['contains_raw_telemetry']).lower()}",
+            f"contains_secrets={str(posture['evidence_manifest']['contains_secrets']).lower()}",
+            f"human_review_required={str(posture['evidence_manifest']['human_review_required']).lower()}",
         ]
         for issue in posture["blocking_issues"][:50]:
             lines.append(f"blocking_issue={issue}")
