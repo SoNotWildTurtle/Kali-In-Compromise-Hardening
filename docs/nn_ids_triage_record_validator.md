@@ -47,6 +47,19 @@ bash nn_ids_triage_record_validate.sh --release-gate path/to/triage-record.env
 
 Release-gate mode accepts only `pass` and `watch` decisions with `release_ready=true`, no blocking issues, aggregate-only privacy scope, human review still required, and `live_action_authorized=false`. It rejects `degraded` and `blocked` records so they can be used as handoff evidence but not as promotion evidence.
 
+## Fixture examples
+
+Reusable fixture records live under `examples/nn_ids_triage_records/` so reviewers and tests can share the same conservative record shapes:
+
+- `examples/nn_ids_triage_records/pass_release_ready.env` demonstrates a release-ready aggregate record that passes normal validation and release-gate mode.
+- `examples/nn_ids_triage_records/watch_handoff.env` demonstrates a conservative handoff record that passes normal validation but intentionally fails release-gate mode until a reviewer marks it release-ready.
+
+Validate the fixtures before copying them into release notes or handoff bundles:
+
+```bash
+bash tests/test_nn_ids_triage_fixtures_static.sh
+```
+
 ## Safety checks
 
 The validator fails closed when a record:
@@ -69,16 +82,18 @@ Triage records are evidence, not authority. They help reviewers make conservativ
 
 `--print-template` improves usability without increasing authority: it only prints local text, keeps the default record non-release-ready, and preserves the same passive aggregate-only constraints validated by normal mode.
 
+Fixture examples improve reproducibility without increasing authority: they are static local text records, contain no secrets or raw telemetry, and are validated by the same passive script before they are used as review evidence.
+
 ## Compatibility impact
 
 This is additive and backwards compatible. Existing NN IDS release readiness, model-card, drift, health, posture bundle, firstboot, restore, service, timer, schema, and host/VM policy workflows remain unchanged.
 
 ## Rollback
 
-Rollback is a normal revert of the validator, this document, the changelog fragment, and static tests. No host, VM, service, firewall, IDS model, dataset, telemetry, secret, package, hypervisor, firstboot, restore, or runtime state requires rollback.
+Rollback is a normal revert of the validator, this document, the changelog fragment, static tests, and fixture examples. No host, VM, service, firewall, IDS model, dataset, telemetry, secret, package, hypervisor, firstboot, restore, or runtime state requires rollback.
 
 ## Follow-up work
 
-- Convert Markdown examples into fixture files once the repository standardizes triage-record artifact locations.
-- Wire validator output into release receipts and posture bundle manifests.
+- Wire accepted triage records into release receipts and posture bundle manifests.
 - Add JSON-schema parity after the key/value record contract stabilizes.
+- Add fixture coverage for degraded and blocked records once the repository standardizes blocker taxonomy names.

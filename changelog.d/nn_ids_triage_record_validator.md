@@ -6,6 +6,7 @@
 - Added `docs/nn_ids_triage_record_validator.md` with usage, safety boundary, compatibility, rollback, and follow-up notes.
 - Added `tests/test_nn_ids_triage_record_validator_static.sh` to verify validator syntax, documentation coverage, changelog coverage, accepted handoff records, release-gate behavior, and fail-closed malformed or unsafe records.
 - Added `--print-template` so reviewers can generate a conservative aggregate-only starter record that defaults to `triage_decision=watch`, `release_ready=false`, `human_review_required=true`, and `live_action_authorized=false`.
+- Added fixture records in `examples/nn_ids_triage_records/pass_release_ready.env` and `examples/nn_ids_triage_records/watch_handoff.env`, plus `tests/test_nn_ids_triage_fixtures_static.sh`, so reviewer handoffs and release notes can reuse validated passive examples.
 
 ## Security
 
@@ -13,8 +14,10 @@
 - The validator keeps `human_review_required=true`, requires `live_action_authorized=false`, rejects `live_action_authorized=true`, requires aggregate-only privacy wording, requires uncertainty notes, requires rollback references, and treats command-like operational text as unsafe.
 - Release-gate mode accepts only `pass` and `watch` records with `release_ready=true` and no blocking issues; `degraded` and `blocked` records remain valid handoff evidence but cannot promote a release.
 - `--print-template` prints text only, performs no live checks, and remains non-release-ready until a reviewer fills in evidence and reruns validation.
+- Fixture examples are static local text records only; they contain no raw telemetry, secrets, host identifiers, VM identifiers, packet captures, payloads, or operational commands.
 
 ## Validation
 
 - Added focused validation command: `bash tests/test_nn_ids_triage_record_validator_static.sh`.
+- Added fixture validation command: `bash tests/test_nn_ids_triage_fixtures_static.sh`.
 - Repo-wide validation remains: `bash tests/run_static_security_checks.sh`.
