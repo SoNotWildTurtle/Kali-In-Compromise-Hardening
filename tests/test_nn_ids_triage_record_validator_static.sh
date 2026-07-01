@@ -30,6 +30,8 @@ require_token() {
 
 for token in \
   'Usage: nn_ids_triage_record_validate.sh [--release-gate] <triage-record>' \
+  'nn_ids_triage_record_validate.sh --print-template' \
+  'print_template()' \
   'triage_decision' \
   'release_ready' \
   'source_artifacts' \
@@ -50,6 +52,7 @@ done
 
 for token in \
   'NN IDS Triage Record Validator' \
+  '--print-template' \
   '--release-gate' \
   'Release-gate mode accepts only `pass` and `watch`' \
   'Triage records are evidence, not authority' \
@@ -65,6 +68,7 @@ for token in \
   'passive' \
   'aggregate-only' \
   'live_action_authorized=false' \
+  '--print-template' \
   'bash tests/test_nn_ids_triage_record_validator_static.sh'; do
   require_token "$CHANGELOG" "$token"
 done
@@ -86,6 +90,23 @@ EOF
 
 bash "$VALIDATOR" "$TMP_DIR/pass.env" >/dev/null || fail 'valid pass record should be accepted'
 bash "$VALIDATOR" --release-gate "$TMP_DIR/pass.env" >/dev/null || fail 'valid pass record should be accepted by release gate mode'
+
+bash "$VALIDATOR" --print-template > "$TMP_DIR/template.env" || fail '--print-template should render a passive template'
+require_token "$TMP_DIR/template.env" 'triage_decision=watch'
+require_token "$TMP_DIR/template.env" 'release_ready=false'
+require_token "$TMP_DIR/template.env" 'aggregate-only; no raw telemetry or secrets'
+require_token "$TMP_DIR/template.env" 'human_review_required=true'
+require_token "$TMP_DIR/template.env" 'live_action_authorized=false'
+bash "$VALIDATOR" "$TMP_DIR/template.env" >/dev/null || fail 'printed template should validate as passive handoff evidence'
+if bash "$VALIDATOR" --release-gate "$TMP_DIR/template.env" >/dev/null 2>&1; then
+  fail 'printed template must not pass release-gate mode until reviewer marks release_ready=true'
+fi
+if bash "$VALIDATOR" --print-template "$TMP_DIR/pass.env" >/dev/null 2>&1; then
+  fail '--print-template must not accept extra record paths'
+fi
+if bash "$VALIDATOR" --release-gate --print-template >/dev/null 2>&1; then
+  fail '--print-template must not combine with --release-gate'
+fi
 
 cat > "$TMP_DIR/degraded.env" <<'EOF'
 triage_decision=degraded

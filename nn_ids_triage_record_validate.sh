@@ -7,15 +7,39 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage: nn_ids_triage_record_validate.sh [--release-gate] <triage-record>
+       nn_ids_triage_record_validate.sh --print-template
 
 Validates a passive aggregate-only NN IDS triage record written as stable key=value
 lines. By default the validator checks record shape and safety boundaries for all
 supported decisions. With --release-gate, only pass/watch records with safe release
 handoff metadata are accepted for promotion evidence.
 
+Use --print-template to write a conservative key=value template to stdout for
+reviewers who need a reproducible starting point.
+
 This tool is intentionally passive. It reads one local text file and does not run
 live IDS checks, inspect packets, mutate services, change firewall policy, retrain
 models, execute restores, or contact host/VM/hypervisor APIs.
+EOF
+}
+
+print_template() {
+  cat <<'EOF'
+# Passive NN IDS triage record template.
+# Fill every value with aggregate-only evidence. Do not include raw telemetry,
+# secrets, packet captures, payloads, endpoint identifiers, or operational commands.
+triage_decision=watch
+release_ready=false
+source_artifacts=nn_ids_release_readiness_summary.json,nn_ids_health_evidence.json,nn_ids_drift_evidence.json
+artifact_hashes=manifest:nn_ids_posture_bundle_manifest.json#sha256
+blocking_issues=none; replace with concise blocker summary if degraded or blocked
+uncertainty_note=aggregate evidence is an analytical estimate that requires human review before promotion
+privacy_scope=aggregate-only; no raw telemetry or secrets
+human_review_required=true
+live_action_authorized=false
+rollback_reference=docs/nn_ids_alert_triage_playbook.md#rollback
+next_evidence_needed=confirm hosted release gates, freshness, drift, and model-card evidence before merge
+owner=release-reviewer
 EOF
 }
 
@@ -27,6 +51,15 @@ while [[ $# -gt 0 ]]; do
     --release-gate)
       release_gate=true
       shift
+      ;;
+    --print-template)
+      if [[ "$release_gate" == true || -n "$record_path" || $# -ne 1 ]]; then
+        printf '[triage-record-validator][FAIL] --print-template cannot be combined with --release-gate, a record path, or other options\n' >&2
+        usage >&2
+        exit 2
+      fi
+      print_template
+      exit 0
       ;;
     -h|--help)
       usage
