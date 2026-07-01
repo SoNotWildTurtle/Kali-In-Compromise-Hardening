@@ -87,14 +87,14 @@ Reviewer notes:
 
 ## Example: blocked
 
-Use `blocked` when evidence is missing, malformed, unsafe, stale beyond policy, or requests live action.
+Use `blocked` when evidence is missing, malformed, unsafe, stale beyond policy, or attempts to cross from passive evidence into runtime-state change territory.
 
 ```text
 triage_decision=blocked
 release_ready=false
 source_artifacts=nn_ids_release_readiness_summary.json,nn_ids_posture_bundle_manifest.json
 artifact_hashes=missing manifest hash for nn_ids_release_readiness_summary.json
-blocking_issues=release summary is malformed and includes a live action request; posture bundle lacks required artifact hash
+blocking_issues=release summary is malformed and attempts to cross from passive evidence into runtime-state change territory; posture bundle lacks required artifact hash
 uncertainty_note=unsafe or malformed aggregate evidence prevents a reliable analytical estimate
 privacy_scope=aggregate-only required; record rejected because safety boundary could not be verified
 human_review_required=true
@@ -108,7 +108,7 @@ Reviewer notes:
 
 - Fail closed and leave the PR or release blocked.
 - Remove or replace malformed evidence with aggregate-only artifacts.
-- Require a separate reviewed operations path before any live action.
+- Require a separate reviewed operations path before any runtime-state change.
 
 ## Accessibility and handoff notes
 
