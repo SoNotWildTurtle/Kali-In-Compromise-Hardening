@@ -11,6 +11,7 @@
 - Added `schemas/nn_ids_triage_record.schema.json`, a machine-readable JSON schema for passive NN IDS triage records and release handoff bundles.
 - Added `tests/test_nn_ids_triage_record_schema_static.sh` to verify schema JSON parsing, required-key parity with the shell validator, fixture parity, `release_gate_contract` coverage, and conservative safety tokens.
 - Added `--emit-json` so validated key/value triage records can be exported as schema-compatible JSON for release receipts, posture bundle manifests, and reviewer handoff tooling.
+- Added `nn_ids_triage_bundle_manifest.py` plus `tests/test_nn_ids_triage_bundle_manifest_static.sh` so validated JSON triage records can be gathered into a passive aggregate-only bundle manifest with record hashes, decision counts, blocker counts, owner handoff, and follow-up evidence.
 
 ## Security
 
@@ -22,6 +23,7 @@
 - The degraded and blocked fixtures intentionally fail release-gate mode while passing normal passive validation, preserving conservative reviewer handoff without authorizing promotion.
 - The JSON schema is static documentation and validation evidence only. It adds no runtime mutation, no credential access, no live-state inspection, and no authority to execute IDS, host, VM, hypervisor, firewall, restore, retraining, or response actions.
 - `--emit-json` runs after the same fail-closed validation path, emits only the stable schema keys, keeps booleans typed, and does not add live-state authority, raw telemetry, secrets, host identifiers, VM identifiers, packet captures, payloads, or operational commands.
+- The triage bundle manifest helper reads local JSON records only, rejects unexpected keys and live-action authorization, hashes source records, summarizes aggregate evidence, and does not inspect live IDS, host, VM, hypervisor, packet, payload, firewall, restore, retraining, service, network, or telemetry state.
 
 ## Validation
 
@@ -29,4 +31,5 @@
 - Added fixture validation command: `bash tests/test_nn_ids_triage_fixtures_static.sh`.
 - Added schema validation command: `bash tests/test_nn_ids_triage_record_schema_static.sh`.
 - JSON export behavior is covered by `bash tests/test_nn_ids_triage_record_validator_static.sh`.
+- Triage bundle manifest behavior is covered by `bash tests/test_nn_ids_triage_bundle_manifest_static.sh`.
 - Repo-wide validation remains: `bash tests/run_static_security_checks.sh`.

@@ -118,8 +118,10 @@ for token in [
     'nn_ids_audit_gate.service',
     'nn_ids_audit_gate.timer',
     'nn_ids_triage_record_validate.sh',
+    'nn_ids_triage_bundle_manifest.py',
     'tests/test_nn_ids_triage_record_validator_static.sh',
     'tests/test_nn_ids_triage_record_schema_static.sh',
+    'tests/test_nn_ids_triage_bundle_manifest_static.sh',
     'docs/nn_ids_triage_record_validator.md',
     'schemas/nn_ids_triage_record.schema.json',
     'changelog.d/nn_ids_triage_record_validator.md',
@@ -130,6 +132,13 @@ for token in [
     elif token.endswith('.sh') and token == 'nn_ids_triage_record_validate.sh':
         if not (root / token).exists():
             errors.append(f'missing critical passive validator {token}')
+        if f'"{token}"' not in build and f"'{token}'" not in build:
+            errors.append(f'build_custom_iso.sh missing critical passive validator {token}')
+    elif token.endswith('.py') and token == 'nn_ids_triage_bundle_manifest.py':
+        if not (root / token).exists():
+            errors.append(f'missing critical passive manifest helper {token}')
+        if f'"{token}"' not in build and f"'{token}'" not in build:
+            errors.append(f'build_custom_iso.sh missing critical passive manifest helper {token}')
     elif f'"{token}"' not in build and f"'{token}'" not in build:
         errors.append(f'build_custom_iso.sh missing critical module {token}')
 
