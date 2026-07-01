@@ -71,7 +71,7 @@ emit_json_record() {
         printf '"%s"' "$value"
         ;;
     esac
-    comma=',\n'
+    comma=$',\n'
   done
   printf '\n}\n'
 }
