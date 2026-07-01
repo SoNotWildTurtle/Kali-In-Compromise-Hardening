@@ -16,23 +16,14 @@ fail() {
 [[ -f "$DOC" ]] || fail "missing required file: $DOC"
 [[ -f "$CHANGELOG" ]] || fail "missing required file: $CHANGELOG"
 
-doc_text="$(<"$DOC")"
-changelog_text="$(<"$CHANGELOG")"
-
 require_doc() {
   local token="$1"
-  case "$doc_text" in
-    *"$token"*) ;;
-    *) fail "documentation missing required token: $token" ;;
-  esac
+  grep -Fq -- "$token" "$DOC" || fail "documentation missing required token: $token"
 }
 
 require_changelog() {
   local token="$1"
-  case "$changelog_text" in
-    *"$token"*) ;;
-    *) fail "changelog missing required token: $token" ;;
-  esac
+  grep -Fq -- "$token" "$CHANGELOG" || fail "changelog missing required token: $token"
 }
 
 # The examples must preserve the passive, aggregate-only safety boundary.
