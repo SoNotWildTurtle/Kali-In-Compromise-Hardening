@@ -34,6 +34,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: restore-executor-release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   restore-executor-release-gate:
     name: Manual restore executor wiring gate
@@ -132,6 +136,20 @@ jobs:
             --output /tmp/restore-release-summary.json \
             --report /tmp/restore-release-summary.report \
             --strict
+
+      - name: Write restore release gate diagnostics summary
+        if: always()
+        run: |
+          {
+            echo '## Restore Executor Release Gate'
+            echo ''
+            echo '- Scope: read-only wiring checks plus passive restore approval and blocked-approval evidence generation.'
+            echo '- Local reproduction: `python3 host_vm_restore_executor_wiring_check.py --root . --strict --output /tmp/restore-executor-wiring.json --report /tmp/restore-executor-wiring.report` followed by the fixture commands in `.github/workflows/restore-executor-release-gate.yml`.'
+            echo '- First failed step to inspect: **Run read-only wiring gate** or **Build passive restore release summary evidence**.'
+            echo '- Evidence artifact: `restore-executor-release-evidence`.'
+            echo '- Workflow source: `.github/workflows/restore-executor-release-gate.yml`.'
+            echo '- Safety boundary: diagnostics and fixture validation only; this workflow does not apply live restore actions or modify host, VM, hypervisor, firewall, service, IDS, network, or telemetry state.'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload restore release evidence
         if: always()
