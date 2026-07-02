@@ -164,6 +164,65 @@ if errors:
 print('[static-check] ISO, firstboot, smoke, and restore-executor wiring checks passed')
 PY
 
+note "checking workflow diagnostics coverage"
+python3 - <<'PY'
+import pathlib
+import sys
+
+workflow_path = pathlib.Path('.github/workflows/static-security-checks.yml')
+doc_path = pathlib.Path('docs/static_workflow_diagnostics.md')
+changelog_path = pathlib.Path('changelog.d/static_workflow_diagnostics.md')
+errors = []
+
+for path in [workflow_path, doc_path, changelog_path]:
+    if not path.exists():
+        errors.append(f'missing workflow diagnostics evidence file {path}')
+
+if workflow_path.exists():
+    workflow = workflow_path.read_text(encoding='utf-8')
+    for token in [
+        'concurrency:',
+        'cancel-in-progress: true',
+        'timeout-minutes: 10',
+        'Write static diagnostics summary',
+        'GITHUB_STEP_SUMMARY',
+        'Run defensive static checks',
+        'bash tests/run_static_security_checks.sh',
+        'does not inspect live IDS, host, VM, hypervisor, packet, payload, firewall, restore, retraining, service, network, or telemetry state',
+    ]:
+        if token not in workflow:
+            errors.append(f'static workflow missing diagnostics token {token}')
+
+if doc_path.exists():
+    doc = doc_path.read_text(encoding='utf-8')
+    for token in [
+        'Static Security Checks',
+        'bash tests/run_static_security_checks.sh',
+        'GITHUB_STEP_SUMMARY',
+        'rollback',
+        'diagnostics only',
+    ]:
+        if token not in doc:
+            errors.append(f'static workflow diagnostics doc missing token {token}')
+
+if changelog_path.exists():
+    changelog = changelog_path.read_text(encoding='utf-8')
+    for token in [
+        'concurrency',
+        'timeout-minutes',
+        'GITHUB_STEP_SUMMARY',
+        'security-control behavior unchanged',
+    ]:
+        if token not in changelog:
+            errors.append(f'static workflow diagnostics changelog missing token {token}')
+
+if errors:
+    for error in errors:
+        print(f'[static-check][FAIL] {error}', file=sys.stderr)
+    sys.exit(1)
+print('[static-check] workflow diagnostics coverage passed')
+PY
+
 note "checking baseline hardening in high-risk systemd units"
 for unit in \
     nn_ids_model_audit.service \
