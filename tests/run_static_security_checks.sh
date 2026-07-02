@@ -264,7 +264,7 @@ if doc_path.exists():
         'Run read-only wiring gate',
         'Build passive restore release summary evidence',
         'diagnostics only',
-        'Rollback',
+        'rollback',
     ]:
         if token not in doc:
             errors.append(f'restore workflow diagnostics doc missing token {token}')
