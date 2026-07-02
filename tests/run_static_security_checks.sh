@@ -223,6 +223,72 @@ if errors:
 print('[static-check] workflow diagnostics coverage passed')
 PY
 
+note "checking restore release workflow diagnostics coverage"
+python3 - <<'PY'
+import pathlib
+import sys
+
+workflow_path = pathlib.Path('.github/workflows/restore-executor-release-gate.yml')
+doc_path = pathlib.Path('docs/restore_release_gate_workflow_diagnostics.md')
+changelog_path = pathlib.Path('docs/changelog_restore_release_summary.md')
+errors = []
+
+for path in [workflow_path, doc_path, changelog_path]:
+    if not path.exists():
+        errors.append(f'missing restore workflow diagnostics evidence file {path}')
+
+if workflow_path.exists():
+    workflow = workflow_path.read_text(encoding='utf-8')
+    for token in [
+        'Restore Executor Release Gate',
+        'concurrency:',
+        'cancel-in-progress: true',
+        'timeout-minutes: 5',
+        'Write restore release gate diagnostics summary',
+        'GITHUB_STEP_SUMMARY',
+        'restore-executor-release-evidence',
+        'Run read-only wiring gate',
+        'Build passive restore release summary evidence',
+        'does not apply live restore actions or modify host, VM, hypervisor, firewall, service, IDS, network, or telemetry state',
+    ]:
+        if token not in workflow:
+            errors.append(f'restore release workflow missing diagnostics token {token}')
+
+if doc_path.exists():
+    doc = doc_path.read_text(encoding='utf-8')
+    for token in [
+        'Restore Executor Release Gate',
+        'GITHUB_STEP_SUMMARY',
+        'restore-executor-release-evidence',
+        'python3 host_vm_restore_executor_wiring_check.py',
+        'Run read-only wiring gate',
+        'Build passive restore release summary evidence',
+        'diagnostics only',
+        'rollback',
+    ]:
+        if token not in doc:
+            errors.append(f'restore workflow diagnostics doc missing token {token}')
+
+if changelog_path.exists():
+    changelog = changelog_path.read_text(encoding='utf-8')
+    for token in [
+        'Restore gate workflow diagnostics',
+        'docs/restore_release_gate_workflow_diagnostics.md',
+        'GITHUB_STEP_SUMMARY',
+        'restore-executor-release-evidence',
+        'security',
+        'rollback',
+    ]:
+        if token not in changelog:
+            errors.append(f'restore workflow diagnostics changelog missing token {token}')
+
+if errors:
+    for error in errors:
+        print(f'[static-check][FAIL] {error}', file=sys.stderr)
+    sys.exit(1)
+print('[static-check] restore release workflow diagnostics coverage passed')
+PY
+
 note "checking baseline hardening in high-risk systemd units"
 for unit in \
     nn_ids_model_audit.service \

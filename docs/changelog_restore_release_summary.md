@@ -31,13 +31,15 @@
 - Added same-ref workflow concurrency to the `Restore Executor Release Gate` so superseded pushes to the same branch or pull request cancel stale evidence runs.
 - Added a `GITHUB_STEP_SUMMARY` diagnostics block that records scope, local reproduction guidance, first failed steps to inspect, artifact names, workflow source, and non-mutating safety boundaries.
 - Kept existing workflow name, job name, trigger paths, required evidence artifact name, timeout, and release-gate commands unchanged so branch protection and reviewer workflows remain compatible.
+- Added `docs/restore_release_gate_workflow_diagnostics.md` with reviewer triage order, local reproduction guidance, artifact handoff expectations, compatibility notes, rollback, and follow-up work for the restore release gate diagnostics path.
+- Extended static coverage so future workflow edits must preserve the restore gate diagnostics summary, evidence artifact name, safety boundary, documentation, and changelog trail.
 
 ## Safety and compatibility
 
 - This increment only reads synthetic or reviewer-provided restore executor JSON.
 - It does not install packages, start services, change firewall rules, alter host or VM state, collect credentials, read raw telemetry, access IDS datasets/models, or contact external systems.
 - Existing firstboot gate, release receipt, restore executor, IDS, packaging, services, and operator workflows remain unchanged.
-- The summary, schema, example validation, hosted evidence wiring, and workflow diagnostics can be reverted independently because they only add reviewer evidence, documentation, workflow artifact publication, and test coverage.
+- The summary, schema, example validation, hosted evidence wiring, workflow diagnostics, and workflow diagnostics documentation can be reverted independently because they only add reviewer evidence, documentation, workflow artifact publication, and test coverage.
 
 ## Validation
 
@@ -58,7 +60,7 @@ Static Security Checks
 
 ## Rollback
 
-Revert this changelog, `host_vm_policy_restore_release_summary.py`, `tests/test_host_vm_policy_restore_release_summary_static.sh`, `tests/test_host_vm_policy_restore_summary_schema_examples_static.sh`, `docs/host_vm_policy_restore_release_summary.md`, `docs/schemas/host_vm_policy_restore_release_summary.schema.json`, and the restore release workflow wiring. No live system state requires rollback.
+Revert this changelog, `host_vm_policy_restore_release_summary.py`, `tests/test_host_vm_policy_restore_release_summary_static.sh`, `tests/test_host_vm_policy_restore_summary_schema_examples_static.sh`, `docs/host_vm_policy_restore_release_summary.md`, `docs/restore_release_gate_workflow_diagnostics.md`, `docs/schemas/host_vm_policy_restore_release_summary.schema.json`, the restore release workflow wiring, and related static coverage. No live system state requires rollback.
 
 ## Follow-up
 
@@ -66,3 +68,4 @@ Revert this changelog, `host_vm_policy_restore_release_summary.py`, `tests/test_
 - Add reviewer-facing release notes whenever expected-blocked restore semantics change.
 - Add hosted schema validation after the repository standardizes on a JSON Schema validator dependency.
 - Promote restore release gate summaries into aggregate release-readiness handoff evidence if future reviewers need a single cross-workflow posture report.
+- Keep restore workflow diagnostics small and tied to recurring validation or reviewer handoff gaps.
