@@ -88,7 +88,9 @@ python3 nn_ids_triage_bundle_manifest.py --generated-at "2026-07-01T20:00:00+00:
 
 The triage bundle manifest summarizes record count, decision counts, release-ready count, blocker count, per-record SHA-256 hashes, owners, and next evidence needed. It keeps `human_review_required=true`, `live_action_authorized=false`, and `privacy_scope=aggregate-only; no raw telemetry or secrets`, so the manifest is review evidence rather than live-action authority. If any record is non-release-ready, degraded, blocked, malformed, contains unexpected keys, or weakens the live-action boundary, the helper exits non-zero or reports `overall_status=review-required`/`blocked` instead of implying promotion.
 
-Validate manifest behavior:
+A reusable documentation-only manifest lives at `examples/nn_ids_triage_bundle_manifest.example.json`. It demonstrates the final aggregate shape reviewers should expect without embedding live telemetry, host identifiers, VM identifiers, secrets, packet captures, or response authority.
+
+Validate manifest behavior and example shape:
 
 ```bash
 bash tests/test_nn_ids_triage_bundle_manifest_static.sh
@@ -148,16 +150,17 @@ The JSON schema improves handoff automation without increasing authority: it is 
 
 `nn_ids_triage_bundle_manifest.py` improves release handoff reproducibility without increasing authority: it reads local JSON records, hashes them, summarizes aggregate reviewer evidence, and does not inspect live IDS, host, VM, hypervisor, packet, payload, firewall, restore, retraining, service, network, or telemetry state.
 
+The example bundle improves handoff review ergonomics without increasing authority: it is static documentation evidence only, keeps `live_action_authorized=false`, and demonstrates aggregate-only reviewer state without packaging runtime telemetry or execution hooks.
+
 ## Compatibility impact
 
 This is additive and backwards compatible. Existing key/value validation, JSON export, release-gate behavior, fixture records, NN IDS release readiness, model-card, drift, health, posture bundle, firstboot, restore, service, timer, schema, and host/VM policy workflows remain unchanged.
 
 ## Rollback
 
-Rollback is a normal revert of the validator JSON export path, triage bundle manifest helper, schema, this document, the changelog fragment, static tests, and fixture examples. No host, VM, service, firewall, IDS model, dataset, telemetry, secret, package, hypervisor, firstboot, restore, or runtime state requires rollback.
+Rollback is a normal revert of the validator JSON export path, triage bundle manifest helper, example manifest, schema, this document, the changelog fragment, static tests, and fixture examples. No host, VM, service, firewall, IDS model, dataset, telemetry, secret, package, hypervisor, firstboot, restore, or runtime state requires rollback.
 
 ## Follow-up work
 
 - Embed accepted triage bundle manifests into release receipts and posture bundle manifests.
-- Add machine-readable examples for external release handoff bundles once manifest embedding is standardized.
 - Add optional schema validation for emitted JSON in environments where a JSON Schema validator is already available.
