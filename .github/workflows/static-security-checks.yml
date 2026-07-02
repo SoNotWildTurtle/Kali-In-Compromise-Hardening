@@ -8,10 +8,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: static-security-checks-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   repo-static-security-checks:
     name: Repo-wide static security checks
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,3 +28,16 @@ jobs:
 
       - name: Run defensive static checks
         run: bash tests/run_static_security_checks.sh
+
+      - name: Write static diagnostics summary
+        if: always()
+        run: |
+          {
+            echo '## Static Security Checks'
+            echo ''
+            echo '- Scope: repo-wide defensive syntax, packaging, service wiring, systemd hardening, and passive evidence checks.'
+            echo '- Local reproduction: `bash tests/run_static_security_checks.sh`.'
+            echo '- First failed step to inspect: **Run defensive static checks**.'
+            echo '- Workflow source: `.github/workflows/static-security-checks.yml`.'
+            echo '- Safety boundary: diagnostics only; this workflow does not inspect live IDS, host, VM, hypervisor, packet, payload, firewall, restore, retraining, service, network, or telemetry state.'
+          } >> "$GITHUB_STEP_SUMMARY"
